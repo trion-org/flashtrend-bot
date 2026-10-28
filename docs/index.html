@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tài liệu FlashTrend</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --panel: #ffffff; --ink: #1b2330; --muted: #5b6676; --line: #dde2ea;
+    --accent: #0e8a6a; --warn: #c2334d; --chip: #eef3f8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10141a; --panel: #171d25; --ink: #e6ebf2; --muted: #9aa6b6; --line: #2a3340;
+      --accent: #3cc79c; --warn: #f0758b; --chip: #1f2833;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10141a; --panel: #171d25; --ink: #e6ebf2; --muted: #9aa6b6; --line: #2a3340;
+    --accent: #3cc79c; --warn: #f0758b; --chip: #1f2833;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 40px 16px 64px; }
+  h1 { font-size: 1.9rem; line-height: 1.25; margin: 0 0 8px; }
+  .lead { color: var(--muted); margin: 0 0 28px; max-width: 70ch; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+  a.card { display: block; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+           padding: 18px 20px; color: inherit; text-decoration: none; transition: border-color .15s, transform .15s; }
+  a.card:hover, a.card:focus-visible { border-color: var(--accent); transform: translateY(-2px); outline: none; }
+  .num { font: 600 .8rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--accent); letter-spacing: .06em; }
+  a.card h2 { font-size: 1.12rem; margin: 6px 0 6px; }
+  a.card p { margin: 0 0 10px; color: var(--muted); font-size: .95rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { background: var(--chip); border-radius: 999px; padding: 2px 10px; font-size: .78rem; color: var(--muted); }
+  section.how { margin-top: 36px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; }
+  section.how h2 { font-size: 1.05rem; margin: 0 0 10px; }
+  section.how ul { margin: 0; padding-left: 20px; }
+  section.how li { margin: 4px 0; }
+  .red { color: var(--warn); font-weight: 600; }
+  code { font: .88em ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--chip); padding: 1px 5px; border-radius: 4px; }
+  footer { margin-top: 28px; color: var(--muted); font-size: .85rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tài liệu FlashTrend</h1>
+  <p class="lead">FlashTrend phát hiện video đang hoặc sắp viral, lọc ý tưởng độc đáo và ghi vào Supabase để
+  bot Telegram của estfstudio đọc. Đây là thiết kế (chưa có mã nguồn); mỗi trang mở đầu bằng kết luận, các
+  sơ đồ bấm vào được.</p>
+
+  <div class="grid">
+    <a class="card" href="01-tong-quan.html">
+      <div class="num">01 · TỔNG QUAN</div>
+      <h2>FlashTrend làm gì và chạy ở đâu</h2>
+      <p>Bài toán và giả thuyết, thành phần, các lớp của một run, phạm vi MVP, giới hạn, kiến trúc mã, tech stack, bản đồ ý tưởng.</p>
+      <div class="chips"><span class="chip">H0/H1</span><span class="chip">GitHub Actions</span><span class="chip">tech stack</span></div>
+    </a>
+    <a class="card" href="02-thuat-toan.html">
+      <div class="num">02 · THUẬT TOÁN</div>
+      <h2>Chấm điểm một video</h2>
+      <p>Ratio, Z-Score, engagement Bayes, decay, viral_score với ví dụ 5 video; vận tốc, gia tốc, EMA; cosine; đồ thị; Gemini.</p>
+      <div class="chips"><span class="chip">Z-Score</span><span class="chip">cosine</span><span class="chip">B4/B5</span></div>
+    </a>
+    <a class="card" href="03-du-lieu.html">
+      <div class="num">03 · DỮ LIỆU</div>
+      <h2>Supabase, DDL và ngân sách gói Free</h2>
+      <p>ERD, mọi quan hệ và ON DELETE, quy tắc ID, DDL đầy đủ, bảng media, ai đọc ai ghi, truy vấn cốt lõi, 232 MB / 500 MB.</p>
+      <div class="chips"><span class="chip">DDL</span><span class="chip">quan hệ</span><span class="chip">quota</span></div>
+    </a>
+    <a class="card" href="04-bang-thu-thap.html">
+      <div class="num">04 · BẢNG THU THẬP</div>
+      <h2>app_config, channels, videos, runs, snapshots</h2>
+      <p>Mọi field, kiểu, mục đích và hàng dữ liệu mẫu của các bảng ghi từ API.</p>
+      <div class="chips"><span class="chip">field</span><span class="chip">mẫu</span><span class="chip">snapshots</span></div>
+    </a>
+    <a class="card" href="05-bang-diem.html">
+      <div class="num">05 · BẢNG ĐIỂM</div>
+      <h2>candidates, ideas, embeddings, feedback</h2>
+      <p>Điểm L1 cả cohort, idea + JSON Gemini, vector 384 chiều, nhãn Precision@5, kèm dữ liệu mẫu.</p>
+      <div class="chips"><span class="chip">ideas</span><span class="chip">embeddings</span><span class="chip">feedback</span></div>
+    </a>
+    <a class="card" href="06-bang-mo-rong.html">
+      <div class="num">06 · BẢNG MỞ RỘNG</div>
+      <h2>publish_jobs, media, estf_posts, estf_jobs</h2>
+      <p>Hàng đợi đăng v2, link ảnh, sổ bài và job của estfstudio; bảng mọi kiểu enum.</p>
+      <div class="chips"><span class="chip">v2</span><span class="chip">estfstudio</span><span class="chip">enum</span></div>
+    </a>
+    <a class="card" href="07-anh.html">
+      <div class="num">07 · ẢNH</div>
+      <h2>Upload ảnh qua image host</h2>
+      <p>Ảnh tự tạo được POST tới image host bên thứ ba, Supabase chỉ giữ URL + sha256; rủi ro và câu hỏi cần xác nhận.</p>
+      <div class="chips"><span class="chip">media</span><span class="chip">sha256</span><span class="chip">thirst-party.cmd</span></div>
+    </a>
+    <a class="card" href="08-cai-dat.html">
+      <div class="num">08 · CÀI ĐẶT</div>
+      <h2>Dịch vụ bên thứ ba</h2>
+      <p>GitHub, Supabase, Google Cloud, Gemini, workflow và cron theo múi giờ, OAuth v2, cookie yt-dlp, chạy cục bộ, checklist, lỗi thường gặp.</p>
+      <div class="chips"><span class="chip">secrets</span><span class="chip">OAuth</span><span class="chip">checklist</span></div>
+    </a>
+    <a class="card" href="09-xuat-ban.html">
+      <div class="num">09 · XUẤT BẢN (v2)</div>
+      <h2>Lấy nguồn, biến đổi, đăng YouTube</h2>
+      <p>Bilibili/Douyin qua yt-dlp, biến đổi hợp lệ bằng lồng tiếng, videos.insert với publishAt, quota và rủi ro kênh.</p>
+      <div class="chips"><span class="chip">yt-dlp</span><span class="chip">publishAt</span><span class="chip">COPPA</span></div>
+    </a>
+    <a class="card" href="10-lo-trinh.html">
+      <div class="num">10 · LỘ TRÌNH</div>
+      <h2>Bốn phase, cách đo, giả định</h2>
+      <p>Phase 1 Discover → Tín hiệu → Đăng → Đồ thị; Precision@5 ≥ 0.4; ràng buộc; giả định và câu hỏi còn mở.</p>
+      <div class="chips"><span class="chip">Precision@5</span><span class="chip">phase</span><span class="chip">câu hỏi mở</span></div>
+    </a>
+  </div>
+
+  <section class="how">
+    <h2>Nguồn và cách dựng lại</h2>
+    <ul>
+      <li>Các trang này là nguồn thiết kế duy nhất (bản thiết kế ngày 2026-10-28 đã được gộp vào đây); <code>thirst-party.cmd</code> là lệnh upload ảnh mẫu.</li>
+      <li>Mỗi trang dựng từ <code>tools/docs/*.archify.md</code> bằng
+      <a href="https://github.com/tt-a1i/archify">Archify</a>: <code>tools/docs/build.sh</code> rồi
+      <code>tools/docs/check.sh</code> (browser check). Giao diện tiếng Việt lấy từ <code>tools/docs/archify/vi.json</code>.</li>
+    </ul>
+  </section>
+  <footer>Cập nhật 2026-10-29.</footer>
+</main>
+</body>
+</html>

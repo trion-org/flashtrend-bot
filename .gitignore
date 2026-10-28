@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.venv/
+output/
+cookies.txt
+*.png
+!docs/**/*.png
+# Archify sidecar receipts
+docs/*.delivery.json
+docs/*.finalize*.json
+docs/*.browser-check.json
