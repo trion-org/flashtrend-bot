@@ -5,7 +5,7 @@ Bốn secret là đủ cho MVP: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `YO
 - Không có `TELEGRAM_*` trong repo này: token bot thuộc estfstudio.[](source:setup)
 - Dùng `service_role`, không dùng `anon`: RLS bật và không có policy, nên `anon` không ghi được.
 - API key YouTube chỉ giới hạn theo API, không giới hạn IP: IP của GitHub Actions thay đổi liên tục.
-- Image host trong `thirst-party.cmd` hiện không cần khoá; nếu sau này cần thì thêm secret `IMAGE_HOST_*`.
+- Image host (trang 07) hiện không cần khoá; nếu sau này cần thì thêm secret `IMAGE_HOST_*`.
 
 @answer scope="Hướng dẫn cài đặt (2026-10-28) · cron tính theo UTC · chưa có main.py nên workflow sẽ fail tới Phase 1"
 @meta locale=vi

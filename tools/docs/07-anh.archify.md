@@ -1,14 +1,14 @@
 # Ảnh được upload ở đâu và lưu link thế nào? {#anh}
 
-Ảnh FlashTrend tự tạo (biểu đồ run, ảnh bìa) được POST multipart tới **image host bên thứ ba** trong `thirst-party.cmd`; Supabase chỉ lưu URL trả về cùng `sha256` trong bảng `media`. Thumbnail YouTube đã có URL công khai (`i.ytimg.com`) nên **không cần upload**, chỉ lưu vào `videos.thumbnail_url`.
+Ảnh FlashTrend tự tạo (biểu đồ run, ảnh bìa) được POST multipart tới **image host bên thứ ba** (lệnh mẫu bên dưới); Supabase chỉ lưu URL trả về cùng `sha256` trong bảng `media`. Thumbnail YouTube đã có URL công khai (`i.ytimg.com`) nên **không cần upload**, chỉ lưu vào `videos.thumbnail_url`.
 
 - Không dùng Supabase Storage: gói Free chỉ có 1 GB storage và 5 GB egress cho cả hai repo.[](source:pricing)
 - `sha256` là khoá duy nhất: một ảnh chỉ upload một lần, kể cả khi run chạy lại.
 - Endpoint là API nội bộ của một website, không phải dịch vụ ảnh có hợp đồng: phải coi là có thể hỏng bất cứ lúc nào.
 
-@answer scope="Endpoint lấy từ thirst-party.cmd (2026-10-28) · chưa kiểm định dạng phản hồi · thiết kế, chưa có mã"
+@answer scope="Endpoint lấy từ lệnh upload mẫu (2026-10-28) · chưa kiểm định dạng phản hồi · thiết kế, chưa có mã"
 @meta locale=vi
-@source cmd title="thirst-party.cmd — lệnh upload mẫu" path=thirst-party.cmd
+@source cmd title="Lệnh upload ảnh mẫu (PowerShell, 2026-10-28)"
 @source pricing title="Supabase pricing — Free plan" url=https://supabase.com/pricing
 
 ## Một ảnh đi qua những bước nào? {#luong-upload}
@@ -34,7 +34,15 @@
 
 ## Lệnh mẫu tương đương trong Python {#python}
 
-`thirst-party.cmd` là cú pháp PowerShell (`curl.exe`, dấu backtick cuối dòng để nối dòng), không phải cmd. Bản Python dự kiến cho adapter `infrastructure/image_host.py`:
+```powershell title="Lệnh upload mẫu (PowerShell)"
+curl.exe -X POST "https://nobinobi.vn/shop-service/api/v1/files/upload" `
+  -H "Accept: application/json" `
+  -H "Origin: https://nobinobi.vn" `
+  -H "Referer: https://nobinobi.vn/profile/account" `
+  -F "file=@Screenshot 2026-10-28 185840.png;type=image/png"
+```
+
+Đây là cú pháp PowerShell (`curl.exe`, dấu backtick cuối dòng để nối dòng), không phải cmd. Bản Python dự kiến cho adapter `infrastructure/image_host.py`:
 
 ```python title="infrastructure/image_host.py (dự kiến)"
 import hashlib, requests
@@ -73,6 +81,6 @@ Lệnh mẫu gửi thêm `Origin` và `Referer` của website. Chỉ thêm hai h
 Endpoint có cần cookie đăng nhập không? Lệnh mẫu không có, nhưng nó được chụp từ trang `profile/account`.
 Phản hồi JSON đặt URL ở trường nào, và URL đó có công khai, không hết hạn không?
 
-- [ ] Chạy `thirst-party.cmd` một lần với ảnh thử, lưu phản hồi (đã che thông tin) vào tài liệu này.
+- [ ] Chạy lệnh upload mẫu ở trên một lần với ảnh thử, lưu phản hồi (đã che thông tin) vào tài liệu này.
 - [ ] Xác nhận có được phép dùng endpoint làm kho ảnh cho bot.
 - [ ] Đổi tên tệp thành `third-party.cmd` khi viết mã (lỗi chính tả "thirst").
