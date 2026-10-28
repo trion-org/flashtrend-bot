@@ -9,6 +9,7 @@ Bốn phase, mỗi phase chỉ bắt đầu khi phase trước đo được: **P
 @answer scope="Lộ trình trong bản thiết kế · chưa có ngày cam kết · Phase 0 (khoá spec) đã xong"
 @meta locale=vi
 @source idea title="Bản thiết kế FlashTrend (2026-10-28) — §7 Roadmap, §8 Evaluation, §9 Constraints"
+@source estf-plan title="estfstudio — kế hoạch v1.1.0 dùng chung Supabase (mốc m1–m6)" url=https://github.com/trion-org/estfstudio/blob/develop/docs/v1.1.0/01-ke-hoach-supabase.html
 
 ## Mỗi phase giao gì? {#phase span=12}
 
@@ -25,7 +26,7 @@ Bốn phase, mỗi phase chỉ bắt đầu khi phase trước đo được: **P
 
 @steps id=phase-steps
 | ph1 | Phase 1 Discover | Khoảng 1 tuần làm việc, sau Phase 0 (khoá spec: MVP = thu thập + chấm điểm + báo cáo, upload để Phase 3). YouTube chart + từ khoá + baseline kênh; B1–B3, B6; MiniLM + cosine; schema Supabase; Gemini → `ideas.llm`; Actions + cache + timeout, artifact JSON/PNG; ảnh qua image host; hợp đồng đọc cho estfstudio (run `ok` + ideas xếp hạng). |
-| ph-g | Cổng Precision@5 | Đo trên nhãn `feedback` của 2 tuần digest trước khi mở rộng. |
+| ph-g | Cổng Precision@5 | Đo trên nhãn `feedback` của 2 tuần digest trước khi mở rộng. Nhãn đến từ nút 👍 / 👎 của estfstudio (mốc m4 trong kế hoạch của nó), nên Phase 1 chỉ đo được sau m4.[](source:estf-plan) |
 | ph2 | Phase 2 Tín hiệu | Snapshot → vận tốc và gia tốc view; transcript vào embedding; lọc trùng 90 ngày; TikTok/Facebook allowlist. |
 | ph3 | Phase 3 Đăng | OAuth + test user; resumable upload với `publishAt`; biến đổi kiểu commentary/review, không dựa vào crop/flip. |
 | ph4 | Phase 4 Đồ thị | PageRank hashtag; chỉnh θ, τ, λ trên ý tưởng đã làm và kết quả hit/miss. |
@@ -69,7 +70,7 @@ Bốn phase, mỗi phase chỉ bắt đầu khi phase trước đo được: **P
 | Gemini bắt buộc, `llm_enabled = true` | Key Google AI Studio |
 | Trọng số engagement và λ sẽ chỉnh sau | Chỉ đúng *hướng* (tương đối + ngữ nghĩa + thời gian), không tự nhận đúng tuyệt đối |
 | Supabase Free; cron 1–2 lần/ngày giữ project không pause | `service_role` chỉ trong GitHub Secrets |
-| Telegram không nằm trong repo này | estfstudio đọc cùng project |
+| Telegram không nằm trong repo này | estfstudio đọc cùng project, theo kế hoạch v1.1.0 của nó[](source:estf-plan) |
 
 ## Câu hỏi còn mở {#cau-hoi}
 
@@ -77,7 +78,7 @@ Bốn phase, mỗi phase chỉ bắt đầu khi phase trước đo được: **P
 | --- | --- |
 | Ngách nội dung cụ thể (1–3 từ khoá gốc)? | mostPopular `VN` + 5 từ khoá chung |
 | Ngôn ngữ đầu ra (vi / ja / en)? | vi |
-| estfstudio đã trỏ cùng project Supabase chưa? | Dùng chung một project (kế hoạch estfstudio v1.1.0) |
+| estfstudio đã trỏ cùng project Supabase chưa? | Chưa có mã; dùng chung một project, estfstudio làm theo sáu mốc m1–m6 |
 | Đã có kênh YouTube + test user OAuth chưa, hay chỉ báo cáo? | Chỉ báo cáo, không upload |
 | Có nguồn được phép dùng ở v2 (kênh mình, CC, hợp đồng)? | Chưa; v2 chưa bắt đầu |
 | Đã có project Supabase chưa, region nào (Singapore / Tokyo)? | Tạo mới ở region gần |

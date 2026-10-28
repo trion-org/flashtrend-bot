@@ -5,6 +5,7 @@
 - Không dùng Supabase Storage: gói Free chỉ có 1 GB storage và 5 GB egress cho cả hai repo.[](source:pricing)
 - `sha256` là khoá duy nhất: một ảnh chỉ upload một lần, kể cả khi run chạy lại.
 - Endpoint là API nội bộ của một website, không phải dịch vụ ảnh có hợp đồng: phải coi là có thể hỏng bất cứ lúc nào.
+- estfstudio cũng upload ảnh bìa từng phần lên cùng host, theo đúng quy trình dưới đây (`owner = 'estfstudio'`, `kind = 'cover'`).
 
 @answer scope="Endpoint lấy từ lệnh upload mẫu (2026-10-28) · chưa kiểm định dạng phản hồi · thiết kế, chưa có mã"
 @meta locale=vi
@@ -31,6 +32,8 @@
 | u-post | Image host | Gửi `file=@<ảnh>;type=image/png`, giới hạn 2 MB, timeout 30 giây, thử lại 2 lần. | upload-flow | host |
 | u-save | Supabase | Lưu `url`, `host`, `sha256`, `bytes`, `kind`, `video_id` hoặc `run_id`. | upload-flow | db |
 | u-read | estfstudio | Lấy `image_url` từ view digest, gửi ảnh qua Telegram bằng URL (không tải về). | upload-flow | estf |
+
+Phía estfstudio dùng adapter riêng `infrastructure/image_host.py` bằng `urllib` (dự án không thêm `requests`); upload lỗi không chặn việc đăng bài, chỉ để `cover_media_id` trống. Cron `HEAD url` hằng tuần của FlashTrend kiểm mọi hàng `media`, kể cả `owner = 'estfstudio'`.
 
 ## Lệnh mẫu tương đương trong Python {#python}
 
@@ -83,4 +86,5 @@ Phản hồi JSON đặt URL ở trường nào, và URL đó có công khai, kh
 
 - [ ] Chạy lệnh upload mẫu ở trên một lần với ảnh thử, lưu phản hồi (đã che thông tin) vào tài liệu này.
 - [ ] Xác nhận có được phép dùng endpoint làm kho ảnh cho bot.
+- [ ] Chia sẻ kết quả chạy thử với estfstudio: nó chờ cùng câu trả lời ở mốc m5 của kế hoạch v1.1.0.
 - [ ] Đổi tên tệp thành `third-party.cmd` khi viết mã (lỗi chính tả "thirst").

@@ -127,7 +127,7 @@ Chạy thử: tab Actions → workflow **FlashTrend digest** → Run workflow. L
 | sb2 | Lấy URL và key | Project Settings → API: Project URL → `SUPABASE_URL`; `service_role` → Reveal → `SUPABASE_SERVICE_ROLE_KEY` (JWT bắt đầu `eyJ`). |
 | sb3 | Chạy DDL | SQL Editor → New query → dán DDL lõi + bảng `media` (trang 03 · Dữ liệu) → Run; `create extension if not exists vector` nằm đầu DDL. |
 | sb4 | Seed app_config | `insert into app_config (keywords, regions, llm_enabled) …`; chạy lần hai sẽ lỗi khoá chính, khi đó dùng `update … where id = 1`. |
-| sb5 | Chung với estfstudio | Một project cho cả hai repo; estfstudio chạy migration `estf_*` sau DDL này. |
+| sb5 | Chung với estfstudio | Một project cho cả hai repo; thứ tự: DDL lõi, bảng `media`, rồi estfstudio chạy migration `estf_*` (mốc m1 trong kế hoạch của nó). |
 
 Connection string (chỉ khi sau này dùng `psycopg`): Project Settings → Database → URI chế độ Transaction pooler, cổng `6543`; lưu thành secret `SUPABASE_DB_URL`, không commit.
 
@@ -217,6 +217,6 @@ JSON liệt kê model nghĩa là key sống; `API_KEY_INVALID` là sai key hoặ
 - [ ] YouTube Data API v3 đã bật; API key chỉ giới hạn theo API đó.
 - [ ] Key Gemini; lệnh `curl` liệt kê được model.
 - [ ] Bốn secret MVP đã gắn; không có `TELEGRAM_*` trên repo này.
-- [ ] estfstudio (ngoài repo) có cùng `SUPABASE_URL` + `service_role`.
+- [ ] estfstudio (ngoài repo) có cùng `SUPABASE_URL` + `service_role` trong `.secrets/secrets.yml`, và đã chạy migration `estf_*`.
 - [ ] `.env` có trong `.gitignore`; không secret nào trong tệp được track.
 - [ ] `workflow_dispatch` chạy được (fail trước khi có `main.py` ở Phase 1 là bình thường).

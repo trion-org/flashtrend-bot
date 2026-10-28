@@ -322,7 +322,9 @@ alter table runs add column chart_media_id text references media (id);
 | `runs` | Ghi | Đọc (`status = 'ok'`) |
 | `ideas` | Ghi, kể cả `llm` | Đọc; chỉ cập nhật cột `status` |
 | `feedback` | Đọc (đánh giá Precision@5) | Ghi |
-| `media` | Ghi `owner = 'flashtrend'` | Đọc; ghi `owner = 'estfstudio'` |
+| `media` | Ghi `owner = 'flashtrend'` | Đọc; ghi `owner = 'estfstudio'`, `kind = 'cover'` |
+| `estf_posts`, `estf_jobs` | Không đụng | Ghi và đọc (bảng của estfstudio) |
+| `publish_jobs` (v2) | Ghi, chưa tạo ở MVP | Không đụng |
 
 ```sql title="Digest estfstudio đọc: run ok mới nhất, top 10, kèm ảnh"
 select i.run_id, i.video_id, i.title, i.url, i.channel_title,
@@ -335,6 +337,17 @@ limit 10;
 ```
 
 Liệt kê cột cụ thể, không `select *`: giữ egress nhỏ và không bao giờ kéo vector 384 chiều về client.
+
+Quy tắc estfstudio phải theo (kế hoạch ở `docs/v1.1.0/01-ke-hoach-supabase.html` của estfstudio):
+
+| Quy tắc | Nội dung |
+| --- | --- |
+| Chỉ đọc run `ok` | Run `error` bị bỏ qua dù đã có `candidates` |
+| `ideas.status` | Lồng tiếng một ý tưởng → `used`; bỏ qua → `seen` hoặc `rejected`; mặc định `new` |
+| `feedback` | Nhãn `useful` / `not_useful` từ nút 👍 / 👎; một nhãn mỗi idea |
+| `media` | Chỉ ghi `owner = 'estfstudio'`; `sha256` trùng thì dùng lại hàng cũ |
+| Ảnh `alive = false` | Coi như không có ảnh; không xoá hàng của FlashTrend |
+| Thứ tự DDL | DDL lõi, rồi `media`, rồi migration `estf_*` của estfstudio |
 
 ```sql title="Truy vấn cốt lõi khác"
 -- μ, σ của cohort cho Z-Score (L1)
@@ -381,7 +394,7 @@ xychart-beta horizontal
 | `snapshots` | 54.000 × ~0,15 KB | 8 MB |
 | `ideas` | 10/ngày × 365 × ~3 KB (`llm` jsonb), giữ lâu dài | 11 MB |
 | `media` + `channels` | Chỉ URL và số, không có ảnh | 3 MB |
-| Phần estfstudio | Bài đã đăng, job nhẹ (kế hoạch v1.1.0 của estfstudio) | 20 MB |
+| Phần estfstudio | Chừa 20 MB; kế hoạch v1.1.0 ước tính dùng ≈ 12 MB/năm (bài đã đăng, job nhẹ, ảnh bìa) | 20 MB |
 | Nền Postgres | Catalog hệ thống, extension | 30 MB |
 | **Tổng** | Cộng các dòng trên | **232 MB ≈ 46 %** |
 

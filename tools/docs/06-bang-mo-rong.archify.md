@@ -53,6 +53,8 @@ Mỗi tệp ảnh có đúng một hàng: `sha256` unique nên upload lại cùn
 | `checked_at` | timestamptz | có | Lần kiểm link gần nhất (cron hằng tuần) | `2026-11-04T00:20:00Z` |
 | `created_at` | timestamptz | không | Lúc ghi | `2026-10-28T00:18:38Z` |
 
+Cron `HEAD url` hằng tuần của FlashTrend kiểm mọi hàng, kể cả `owner = 'estfstudio'`; 404 chỉ đặt `alive = false`, không xoá hàng. Phía estfstudio coi ảnh `alive = false` như chưa có ảnh bìa.
+
 | Hàng mẫu | owner | kind | gắn với | bytes |
 | --- | --- | --- | --- | --- |
 | `img_4be1c07d9a2f5e31` | flashtrend | chart | `run_20261028T001700Z` | 48.213 |
