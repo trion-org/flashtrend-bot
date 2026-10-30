@@ -35,7 +35,7 @@ Câu hỏi nghiên cứu: kết hợp API chính thức, trình trích metadata,
 | Chạy ở đâu | GitHub Actions, repo public + Secrets, 1–2 lần/ngày |
 | Lưu ở đâu | Supabase (Postgres + pgvector) là nguồn sự thật; JSON/PNG chỉ là bản xuất |
 | LLM | Gemini API bắt buộc (key Google AI Studio) |
-| Ngôn ngữ | Python 3.10+ |
+| Ngôn ngữ | Python 3.12 trên Actions (mã chạy được từ 3.10; Google đã ngừng hỗ trợ 3.10) |
 | Không làm ở MVP | Telegram trong repo này, reup nguyên bản, cào hàng loạt, LLM chạy local, GPU |
 | Trạng thái | Đã khoá ý tưởng (2026-10-28); Phase 1 đã có mã và test (2026-10-31), chưa chạy thật với khoá dịch vụ |
 
@@ -138,7 +138,7 @@ flashtrend-bot/
 
 | Lớp | Lựa chọn | Lý do |
 | --- | --- | --- |
-| Ngôn ngữ | Python 3.10 | Khớp mẫu Actions; yt-dlp, google client |
+| Ngôn ngữ | Python 3.12 | Google client đã ngừng hỗ trợ 3.10; yt-dlp |
 | YouTube | `google-api-python-client` | Thư viện chính thức |
 | Trích metadata | `yt-dlp` (chỉ metadata trước) | Đã dùng sẵn |
 | Toán | `numpy`, `pandas` | Z-Score, điểm |

@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.10" }
+        with: { python-version: "3.12" }
       - run: pip install requests supabase google-api-python-client numpy
       - run: python main.py check-media
         env:
