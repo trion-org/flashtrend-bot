@@ -28,6 +28,8 @@ declare
   n_candidates int;
   n_embeddings int;
   n_videos int;
+  n_hot int := 0;
+  n_charts int := 0;
 begin
   delete from snapshots where expire_at < now();
   get diagnostics n_snapshots = row_count;
@@ -38,6 +40,19 @@ begin
   delete from embeddings
    where updated_at < now() - make_interval(days => p_embeddings_ttl_days);
   get diagnostics n_embeddings = row_count;
+
+  -- hot lists and analysis charts are only useful while fresh: they expire with the snapshots.
+  -- Guarded: a database that has not run 07_analysis.sql yet has neither the table nor the enum value.
+  begin
+    delete from hot_videos where created_at < now() - make_interval(days => p_ttl_days);
+    get diagnostics n_hot = row_count;
+  exception when undefined_table then
+    n_hot := 0;
+  end;
+  delete from media
+   where kind::text = 'analysis'
+     and created_at < now() - make_interval(days => p_ttl_days);
+  get diagnostics n_charts = row_count;
 
   -- orphan videos: not seen for p_ttl_days and referenced by nothing (ideas are kept ~1 year)
   delete from videos v
@@ -53,7 +68,9 @@ begin
     'snapshots', n_snapshots,
     'candidates', n_candidates,
     'embeddings', n_embeddings,
-    'videos', n_videos
+    'videos', n_videos,
+    'hot_videos', n_hot,
+    'analysis_charts', n_charts
   );
 end;
 $$;

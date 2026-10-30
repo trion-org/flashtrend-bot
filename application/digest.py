@@ -15,6 +15,7 @@ from datetime import datetime
 
 from application.observer import NullObserver, Observer
 from application.ports import (
+    AnalysisRenderer,
     ChartRenderer,
     DigestStore,
     Embedder,
@@ -36,6 +37,7 @@ from domain.models import (
     Candidate,
     Channel,
     CohortStats,
+    HotVideo,
     Idea,
     Media,
     RunStats,
@@ -51,6 +53,9 @@ DB_STOP_BYTES = 450 * 1024 * 1024  # docs/03: stop writing candidates
 EMBEDDING_TTL_DEFAULT = 90
 EMBEDDING_TTL_SHRUNK = 60
 DESCRIPTION_MAX_CHARS = 500
+HOT_LIST_SIZE = 10  # hot_videos rows per run
+CARD_SIZE = 8  # videos on the top card
+HISTORY_RUNS = 48  # past runs on the timeline chart
 
 
 @dataclass
@@ -71,6 +76,7 @@ class RunDigest:
         writer: IdeaWriter | None,
         image_host: ImageHost | None = None,
         chart: ChartRenderer | None = None,
+        analysis: AnalysisRenderer | None = None,
         observer: Observer | None = None,
         clock: Callable[[], datetime] | None = None,
         max_ideas: int = 5,
@@ -84,6 +90,7 @@ class RunDigest:
         self._writer = writer
         self._image_host = image_host
         self._chart = chart
+        self._analysis = analysis
         self._obs = observer or NullObserver()
         self._clock = clock or now_vn
         self._max_ideas = max_ideas
@@ -170,8 +177,18 @@ class RunDigest:
         self._db_bytes = db_bytes
 
         # w2 — collect, channel baselines, videos, snapshots
+        full = self._trigger != "schedule"  # a manual run always does everything
+        ask_youtube = full or now.hour % max(1, config.youtube_search_every_hours) == 0
+        if not ask_youtube:
+            self._obs.info(
+                f"{run_id}: YouTube search skipped (every {config.youtube_search_every_hours} h: quota)"
+            )
         videos = self._source.collect(
-            config.regions, config.keywords, now, config.chart_enabled, config.search_window_hours,
+            config.regions,
+            config.keywords if ask_youtube else (),
+            now,
+            config.chart_enabled and ask_youtube,
+            config.search_window_hours,
             config.bilibili_keywords,
         )
         stats.collected = len(videos)
@@ -198,12 +215,23 @@ class RunDigest:
             f"θ={cohort.z_threshold_used} → {len(outliers)}/{len(candidates)} outliers"
         )
 
+        niche = {
+            c.video.id: scoring.niche_match(c.video.title, c.video.description, config.niche_terms)
+            for c in candidates
+        }
+        if config.niche_boost > 1 and any(niche.get(c.video.id) for c in outliers):
+            self._obs.info(
+                f"{run_id}: niche ×{config.niche_boost:g} for "
+                f"{sum(1 for c in outliers if niche.get(c.video.id))}/{len(outliers)} outlier(s)"
+            )
+
         # w4 + w5 — L2 embeddings, clusters, history, ideas
-        ideas = self._dedup(run_id, config, outliers, channels)
+        ideas = self._dedup(run_id, config, outliers, channels, niche)
         if ideas:
             self._store.insert_ideas(run_id, ideas)
 
-        chart_media_id = self._chart_image(run_id, ideas)
+        picks = self._hot(run_id, config, now, candidates, channels, niche)
+        chart_media_id = self._images(run_id, config, now, candidates, ideas, picks)
         return ideas, chart_media_id
 
     def _baselines(self, videos: list[VideoSnapshot], now: datetime) -> dict[str, Channel]:
@@ -289,6 +317,7 @@ class RunDigest:
         config: AppConfig,
         outliers: list[Candidate],
         channels: dict[str, Channel],
+        niche: dict[str, bool],
     ) -> list[Idea]:
         if not outliers:
             return []
@@ -314,7 +343,7 @@ class RunDigest:
 
         clusters = greedy_clusters(
             [vectors[i] for i in ids],
-            [c.viral_score for c in outliers],
+            [_priority(c, config, niche) for c in outliers],
             config.cosine_threshold,
             run_id,
         )
@@ -336,6 +365,7 @@ class RunDigest:
                     channel_title=channels[cand.video.channel_id].title,
                     cluster_id=cl.cluster_id,
                     duplicates_count=cl.duplicates_count,
+                    niche=niche.get(vid, False),
                     novelty_score=novelty_score(max_cos),
                     embedding=vectors[vid],
                 )
@@ -347,33 +377,132 @@ class RunDigest:
         )
         return ideas
 
+    # ------------------------------------------------------------- hot videos
+
+    def _hot(
+        self,
+        run_id: str,
+        config: AppConfig,
+        now: datetime,
+        candidates: list[Candidate],
+        channels: dict[str, Channel],
+        niche: dict[str, bool],
+    ) -> list[Idea]:
+        """Hottest by priority (niche first): Bilibili's go to ``hot_videos``, the top of all to the card."""
+        ranked = sorted(candidates, key=lambda c: _priority(c, config, niche), reverse=True)
+
+        def title_of(c: Candidate) -> str:
+            ch = channels.get(c.video.channel_id)
+            return ch.title if ch else c.video.channel_id
+
+        bilibili = [c for c in ranked if c.video.platform == "bilibili"][:HOT_LIST_SIZE]
+        rows = [
+            HotVideo(
+                "video", i, c.video.id, c.video.platform, c.video.title, c.video.url, title_of(c),
+                c.video.views, c.video.duration_sec, c.video.published_at, niche.get(c.video.id, False),
+                c.viral_score,
+            )
+            for i, c in enumerate(bilibili, start=1)
+        ]
+        rows += self._series_rows(run_id, config, now)
+        if rows:
+            try:
+                self._store.insert_hot_videos(run_id, rows)
+            except Exception as exc:  # noqa: BLE001 - sql/07 not applied yet, or a blip: the digest goes on
+                self._obs.warn(f"{run_id}: hot_videos not written ({type(exc).__name__}: {exc})")
+        return [
+            Idea(candidate=c, channel_title=title_of(c), cluster_id="hot", niche=niche.get(c.video.id, False))
+            for c in ranked[:CARD_SIZE]
+        ]
+
+    def _series_rows(self, run_id: str, config: AppConfig, now: datetime) -> list[HotVideo]:
+        """Bilibili's live 国创 series ranking as ``kind = series`` rows; never fails the run."""
+        if not config.bilibili_series_types:
+            return []
+        try:
+            series = self._source.hot_series(config.bilibili_series_types, now)
+        except Exception as exc:  # noqa: BLE001 - one more list is not worth a run
+            self._obs.warn(f"{run_id}: series ranking skipped ({type(exc).__name__}: {exc})")
+            return []
+        self._obs.info(f"{run_id}: {len(series)} hot series from the ranking")
+        descriptor = lambda s: " · ".join(x for x in (s.rating, s.episodes) if x) or None  # noqa: E731
+        return [
+            HotVideo("series", s.rank, f"bi_ss{s.season_id}", "bilibili", s.title, s.url, descriptor(s),
+                     s.views, None, None, True, 0.0)
+            for s in series[:HOT_LIST_SIZE]
+        ]
+
     # ----------------------------------------------------------------- images
 
-    def _chart_image(self, run_id: str, ideas: list[Idea]) -> str | None:
-        """Chart PNG → image host → ``media``. A failure only loses the picture (docs/07)."""
-        if not (self._chart and self._image_host and ideas):
+    def _images(
+        self,
+        run_id: str,
+        config: AppConfig,
+        now: datetime,
+        candidates: list[Candidate],
+        ideas: list[Idea],
+        picks: list[Idea],
+    ) -> str | None:
+        """The top card and the analysis charts → image host → ``media``. Never fails the run (docs/07)."""
+        if not (self._image_host and (self._chart or self._analysis) and picks):
             return None
+        if self._trigger == "schedule" and now.hour % max(1, config.analysis_every_hours):
+            self._obs.info(
+                f"{run_id}: charts skipped (every {config.analysis_every_hours} h: image host load)"
+            )
+            return None
+        card_id: str | None = None
+        if self._chart:
+            try:
+                image = self._chart.render(run_id, picks)
+                if image:
+                    card_id = self._publish(
+                        run_id, image.png, image.width, image.height, "top", "Video đang hot", 1
+                    )
+            except Exception as exc:  # noqa: BLE001
+                self._obs.warn(f"{run_id}: top chart skipped ({type(exc).__name__}: {exc})")
+        if self._analysis:
+            try:
+                history = self._store.recent_runs(HISTORY_RUNS)
+            except Exception as exc:  # noqa: BLE001 - only the timeline chart needs it
+                self._obs.warn(f"{run_id}: run history unavailable ({type(exc).__name__}: {exc})")
+                history = []
+            try:
+                images = self._analysis.render(run_id, now, candidates, ideas, history)
+            except Exception as exc:  # noqa: BLE001
+                self._obs.warn(f"{run_id}: analysis charts skipped ({type(exc).__name__}: {exc})")
+                images = []
+            done = 0
+            for img in images:
+                if self._publish(
+                    run_id, img.png, img.width, img.height, img.slug, img.caption, img.position
+                ):
+                    done += 1
+            self._obs.info(f"{run_id}: {done}/{len(images)} analysis chart(s) published")
+        return card_id
+
+    def _publish(
+        self, run_id: str, png: bytes, width: int, height: int, slug: str, caption: str, position: int
+    ) -> str | None:
+        """PNG → image host → ``media`` (kind ``analysis``); the id, or None when this image was skipped."""
         try:
-            image = self._chart.render(run_id, ideas)
-            if image is None:
+            if len(png) > MAX_IMAGE_BYTES:
+                self._obs.warn(f"{run_id}: {slug} chart > 2 MB, not uploaded")
                 return None
-            if len(image.png) > MAX_IMAGE_BYTES:
-                self._obs.warn(f"{run_id}: chart > 2 MB, not uploaded")
-                return None
-            digest = hashlib.sha256(image.png).hexdigest()
+            digest = hashlib.sha256(png).hexdigest()
             existing = self._store.find_media(digest)
             if existing:
                 return existing.id
-            url = self._image_host.upload(image.png, f"{run_id}.png")
+            url = self._image_host.upload(png, f"{run_id}_{slug}.png")
             media = Media(
-                id=media_id_of(digest), owner="flashtrend", kind="chart", url=url, host="nobinobi",
-                sha256=digest, bytes=len(image.png), width=image.width, height=image.height,
-                run_id=run_id,
+                id=media_id_of(digest), owner="flashtrend", kind="analysis", url=url, host="nobinobi",
+                sha256=digest, bytes=len(png), width=width, height=height, run_id=run_id,
+                caption=caption, position=position,
             )
             self._store.insert_media(media)
             return media.id
         except Exception as exc:  # noqa: BLE001
-            self._obs.warn(f"{run_id}: chart image skipped ({type(exc).__name__}: {exc})")
+            self._obs.warn(f"{run_id}: {slug} chart skipped ({type(exc).__name__}: {exc})")
             return None
 
     # -------------------------------------------------------------------- LLM
@@ -430,6 +559,11 @@ class RunDigest:
             self._obs.warn(f"TTL cleanup skipped ({type(exc).__name__}: {exc})")
 
     _db_bytes: int | None = None
+
+
+def _priority(c: Candidate, config: AppConfig, niche: dict[str, bool]) -> float:
+    """What orders ideas and the hot list: viral_score, times ``niche_boost`` for a niche video."""
+    return c.viral_score * (config.niche_boost if niche.get(c.video.id) else 1.0)
 
 
 def _velocity_acceleration(video: VideoSnapshot, prev) -> tuple[float | None, float | None]:

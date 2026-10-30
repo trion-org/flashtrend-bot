@@ -9,7 +9,7 @@ import unittest
 from datetime import timedelta
 
 from application.digest import RunDigest
-from domain.models import Media, PreviousSnapshot
+from domain.models import HotVideo, Media, PreviousSnapshot
 from tests.fakes import NOW, FakeChart, FakeEmbedder, FakeImageHost, FakeSource, FakeWriter
 
 
@@ -53,6 +53,8 @@ class SupabaseStoreIntegrationTest(unittest.TestCase):
         self.assertIn("Chinese AI animation", c.keywords)
         self.assertEqual((len(c.keywords), c.regions), (8, ("VN",)))
         self.assertEqual((c.chart_enabled, c.search_window_hours, c.decay_lambda), (False, 168, 0.01))
+        self.assertEqual((c.bilibili_series_types, c.niche_boost, c.snapshot_ttl_days), ((4,), 3.0, 14))
+        self.assertEqual((c.youtube_search_every_hours, c.analysis_every_hours), (6, 3))
         self.assertEqual(c.bilibili_keywords, ("3D玄幻", "3D国漫", "修仙动画", "国漫", "AI漫剧", "AI动画"))
 
     def test_02_full_run_writes_everything_the_docs_promise(self):
@@ -66,6 +68,8 @@ class SupabaseStoreIntegrationTest(unittest.TestCase):
         self.assertAlmostEqual(run["z_threshold_used"], 0.5)
         self.assertTrue(run["started_at"].endswith("+07:00"), run["started_at"])  # DB shows Vietnam time
         self.assertTrue(run["chart_media_id"].startswith("img_"))
+        card = db.table("media").select("kind,caption,position").eq("id", run["chart_media_id"]).execute().data[0]
+        self.assertEqual(card, {"kind": "analysis", "caption": "Video đang hot", "position": 1})
         ideas = db.table("ideas").select("video_id,llm,status,duplicates_count").eq("run_id", r.run_id).execute().data
         self.assertEqual(sorted(i["video_id"] for i in ideas), ["yt_vid001", "yt_vid004"])
         self.assertTrue(all(i["llm"]["angles"] and i["status"] == "new" for i in ideas))
@@ -111,13 +115,55 @@ class SupabaseStoreIntegrationTest(unittest.TestCase):
     def test_06_cleanup_and_db_size(self):
         self.assertGreater(self.store.db_size_bytes(), 0)
         counts = self.store.cleanup(90, 90)
-        self.assertEqual(set(counts), {"snapshots", "candidates", "embeddings", "videos"})
+        self.assertEqual(set(counts),
+                         {"snapshots", "candidates", "embeddings", "videos", "hot_videos", "analysis_charts"})
 
     def test_07_previous_snapshots_window_and_limit(self):
         prev = self.store.previous_snapshots(["yt_vid001"], NOW + timedelta(hours=12), 2)["yt_vid001"]
         self.assertEqual(len(prev), 2)
         self.assertGreater(prev[0].captured_at, prev[1].captured_at)  # newest first
         self.assertIsInstance(prev[0], PreviousSnapshot)
+
+    def test_08_hot_list_analysis_charts_run_history_and_their_cleanup(self):
+        db = self.store._db
+        r = self.run_digest(clock_offset_h=40)
+        published = NOW - timedelta(hours=1)
+        self.store.insert_hot_videos(r.run_id, [
+            HotVideo("video", 1, "bi_BV1hot", "bilibili", "3D国漫 全集 <合集> & more", "https://www.bilibili.com/video/BV1hot",
+                     "某UP主", 123456, 4342, published, True, 12.5),
+            HotVideo("video", 2, "bi_BV2hot", "bilibili", "第二", "https://www.bilibili.com/video/BV2hot", None,
+                     5, None, None, False, 3.25),
+            HotVideo("series", 1, "bi_ss12548", "bilibili", "灵笼 第二季", "https://www.bilibili.com/bangumi/play/ss12548",
+                     "9.8分 · 全12话", 402_207_839, None, None, True, 0.0),
+        ])
+        rows = db.table("hot_videos").select("*").eq("run_id", r.run_id).order("kind").order("rank").execute().data
+        self.assertEqual([(h["kind"], h["rank"], h["niche"], h["views"], h["duration_sec"]) for h in rows],
+                         [("series", 1, True, 402_207_839, None), ("video", 1, True, 123456, 4342),
+                          ("video", 2, False, 5, None)])  # ranks restart per kind
+        self.assertEqual(rows[1]["title"], "3D国漫 全集 <合集> & more")  # Chinese and markup survive untouched
+        self.assertTrue(rows[1]["created_at"].endswith("+07:00"))
+
+        chart = Media("img_" + "cd" * 8, "flashtrend", "analysis", "https://h/a.png", "nobinobi", "cd" * 32, 10,
+                      run_id=r.run_id, caption="Phân bố z-score", position=3)
+        self.store.insert_media(chart)
+        got = db.table("media").select("kind,caption,position,run_id").eq("id", chart.id).execute().data[0]
+        self.assertEqual(got, {"kind": "analysis", "caption": "Phân bố z-score", "position": 3, "run_id": r.run_id})
+
+        history = self.store.recent_runs(50)
+        self.assertEqual(history[-1].started_at.isoformat()[:13], (NOW + timedelta(hours=40)).isoformat()[:13])
+        self.assertEqual([p.started_at for p in history], sorted(p.started_at for p in history))  # oldest first
+        self.assertEqual(len(self.store.recent_runs(2)), 2)
+
+        # cleanup drops expired hot lists and analysis charts, keeps fresh ones, and leaves other kinds alone
+        db.table("hot_videos").update({"created_at": "2020-01-01T00:00:00+07:00"}).eq("kind", "video").eq("rank", 2).execute()
+        db.table("media").update({"created_at": "2020-01-01T00:00:00+07:00"}).eq("id", chart.id).execute()
+        counts = self.store.cleanup(14, 90)
+        self.assertGreaterEqual(counts["hot_videos"], 1)
+        self.assertGreaterEqual(counts["analysis_charts"], 1)
+        left = db.table("hot_videos").select("kind,rank").eq("run_id", r.run_id).order("kind").execute().data
+        self.assertEqual([(h["kind"], h["rank"]) for h in left], [("series", 1), ("video", 1)])
+        self.assertEqual(db.table("media").select("id").eq("id", chart.id).execute().data, [])
+        self.assertEqual(len(db.table("media").select("id").eq("id", "img_" + "ab" * 8).execute().data), 1)
 
 
 if __name__ == "__main__":

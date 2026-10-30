@@ -33,6 +33,11 @@ class AppConfig:
     chart_enabled: bool = True  # A1 mostPopular chart; off for a niche so the cohort stays on topic
     search_window_hours: int = 48  # A2: only videos published within this window
     bilibili_keywords: tuple[str, ...] = ()  # Chinese search terms for Bilibili; empty = Bilibili off
+    bilibili_series_types: tuple[int, ...] = ()  # Bilibili series rankings (4 = 国创); empty = none
+    niche_terms: tuple[str, ...] = ()  # a title/description with one of these is in the niche
+    niche_boost: float = 1.0  # idea priority multiplier for the niche (viral_score itself is not changed)
+    youtube_search_every_hours: int = 1  # YouTube keyword search only when hour % N == 0 (quota)
+    analysis_every_hours: int = 1  # analysis charts only when hour % N == 0 (image host load)
 
 
 @dataclass(frozen=True)
@@ -107,6 +112,7 @@ class Idea:
     channel_title: str
     cluster_id: str
     duplicates_count: int = 0
+    niche: bool = False  # matched niche_terms / a niche ranking (run-time only, not stored)
     novelty_score: float | None = None
     llm: dict | None = None
     embedding: list[float] = field(default_factory=list, repr=False)
@@ -149,6 +155,37 @@ def expire_at(captured_at: datetime, ttl_days: int) -> datetime:
 
 
 @dataclass(frozen=True)
+class HotSeries:
+    """One entry of Bilibili's live 国创 (Chinese animation) series ranking."""
+
+    rank: int  # as Bilibili ranks it, 1 = hottest
+    season_id: int
+    title: str
+    url: str
+    views: int  # total plays of the whole series
+    rating: str | None  # "9.8分"
+    episodes: str | None  # "全12话" / "更新至第5话"
+
+
+@dataclass(frozen=True)
+class HotVideo:
+    """A row of ``hot_videos``, flat so a reader needs no join. ``kind`` is ``video`` or ``series``."""
+
+    kind: str
+    rank: int  # 1 = hottest within its kind
+    video_id: str
+    platform: str
+    title: str
+    url: str
+    channel_title: str | None
+    views: int
+    duration_sec: int | None
+    published_at: datetime | None
+    niche: bool
+    viral_score: float
+
+
+@dataclass(frozen=True)
 class Media:
     """A row of ``media``: an image already on the image host (URL + sha256, never the bytes)."""
 
@@ -163,6 +200,8 @@ class Media:
     height: int | None = None
     video_id: str | None = None
     run_id: str | None = None
+    caption: str | None = None  # analysis charts: Vietnamese title of the chart
+    position: int | None = None  # analysis charts: display order within a run
 
 
 MAX_IMAGE_BYTES = 2_000_000

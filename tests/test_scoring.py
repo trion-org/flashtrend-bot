@@ -61,6 +61,20 @@ class CohortTest(unittest.TestCase):
         self.assertEqual(sum(1 for z in zs if z >= 0.5), 3)
 
 
+class NicheMatchTest(unittest.TestCase):
+    def test_a_term_in_the_title_or_description_matches_case_insensitively(self):
+        terms = ("国漫", "donghua")
+        self.assertTrue(scoring.niche_match("3D国漫 第1集", "", terms))
+        self.assertTrue(scoring.niche_match("EP12", "Best DONGHUA of the week", terms))
+        self.assertFalse(scoring.niche_match("旅行 vlog", "美食", terms))
+
+    def test_a_search_tag_alone_proves_nothing(self):
+        self.assertFalse(scoring.niche_match("x", "", ()))
+
+    def test_empty_terms_never_match_everything(self):
+        self.assertFalse(scoring.niche_match("x", "y", ("",)))
+
+
 class FormulaEdgeTest(unittest.TestCase):
     def test_half_life(self):
         self.assertAlmostEqual(scoring.half_life_hours(0.05), 13.86, places=2)

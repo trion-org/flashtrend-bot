@@ -1,6 +1,7 @@
 """In-memory adapters and the docs/04 sample cohort, shared by the use-case tests."""
 from __future__ import annotations
 
+import hashlib
 import math
 from datetime import datetime, timedelta
 
@@ -80,7 +81,11 @@ def good_llm(**override) -> dict:
 
 
 class FakeSource:
-    def __init__(self, videos=None, channels=None, error: Exception | None = None):
+    def __init__(self, videos=None, channels=None, error: Exception | None = None, series=None,
+                 series_error: Exception | None = None):
+        self.series = list(series or [])
+        self.series_error = series_error
+        self.series_args: tuple = ()
         self.videos = sample_videos() if videos is None else videos
         self.channels = {c.id: c for c in (sample_channels() if channels is None else channels)}
         self.error = error
@@ -92,6 +97,12 @@ class FakeSource:
         if self.error:
             raise self.error
         return list(self.videos)
+
+    def hot_series(self, season_types, now):
+        self.series_args += (season_types,)
+        if self.series_error:
+            raise self.series_error
+        return list(self.series)
 
     def fetch_channels(self, channel_ids, now):
         self.fetched.append(list(channel_ids))
@@ -105,11 +116,17 @@ class FakeEmbedder:
 
     def encode(self, texts):
         self.calls.append(list(texts))
-        by_title = {title: VECTORS_BY_TITLE[title] for title in texts}
-        return [by_title[t] for t in texts]
+        return [VECTORS_BY_TITLE[t] if t in VECTORS_BY_TITLE else _unit_vector(t) for t in texts]
 
 
 VECTORS_BY_TITLE = {row[1]: VECTORS[f"{row[0]}"] for row in SAMPLE}
+
+
+def _unit_vector(text: str) -> list[float]:
+    """A stable, nearly orthogonal vector for a title the sample does not know (a hash, not a model)."""
+    h = [b / 255 for b in hashlib.sha256(text.encode()).digest()[:3]]
+    norm = math.sqrt(sum(x * x for x in h)) or 1.0
+    return [x / norm for x in h]
 
 
 class FakeWriter:
@@ -162,6 +179,8 @@ class FakeStore:
         self.proposed: set[str] = set()
         self.ideas: dict[tuple[str, str], Idea] = {}
         self.media: dict[str, Media] = {}
+        self.hot_videos: dict[str, list] = {}
+        self.history: list = []
         self.prev: dict[str, list[PreviousSnapshot]] = {}
         self.cleaned: tuple[int, int] | None = None
         self.nearest_calls: list[list[str]] = []
@@ -216,6 +235,14 @@ class FakeStore:
 
     def update_idea_llm(self, run_id, video_id, llm):
         self.ideas[(run_id, video_id)].llm = llm
+
+    def insert_hot_videos(self, run_id, rows):
+        if getattr(self, "hot_error", None):
+            raise self.hot_error
+        self.hot_videos[run_id] = list(rows)
+
+    def recent_runs(self, limit):
+        return list(self.history)[-limit:]
 
     def find_media(self, sha256):
         return next((m for m in self.media.values() if m.sha256 == sha256), None)

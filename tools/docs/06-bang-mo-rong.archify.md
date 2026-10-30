@@ -114,6 +114,53 @@ Chỉ trạng thái và mã lỗi, không có log; tự xoá sau 90 ngày. Log �
 | `feedback_label_t` | `useful`, `not_useful`, `duplicate`, `used` | `feedback.label` |
 | `publish_status_t` | `queued`, `uploaded`, `scheduled`, `failed` | `publish_jobs.status` |
 | `privacy_t` | `private`, `unlisted`, `public` | `publish_jobs.privacy_status` |
-| `media_kind_t` | `thumbnail`, `chart`, `cover` | `media.kind` |
+| `media_kind_t` | `thumbnail`, `chart`, `cover`, `analysis` (migration 07) | `media.kind` |
 | `estf_platform_t` | `facebook`, `drive`, `youtube` | `estf_posts.platform` |
 | `estf_post_status_t` | `scheduled`, `published`, `failed`, `deleted` | `estf_posts.status` |
+
+## hot_videos và biểu đồ phân tích {#phan-tich}
+
+Mỗi lần chạy ghi hai danh sách vào `hot_videos` (phẳng, không cần join): `kind = 'video'` là 10 video Bilibili hot nhất theo độ ưu tiên, `kind = 'series'` là 10 series 国创 đứng đầu bảng xếp hạng sống của Bilibili (ví dụ 灵笼 第二季; `views` là tổng lượt xem cả series, `channel_title` là điểm và số tập, không có thời lượng hay ngày đăng; thứ hạng tính lại từ 1 trong mỗi `kind`) và, theo chu kỳ `analysis_every_hours`, tám ảnh biểu đồ vào `media` với `kind = 'analysis'`, kèm `caption` (tiêu đề tiếng Việt) và `position` (thứ tự hiển thị). estfstudio đọc cả hai cho lệnh `/analysis`. Migration này chạy trên mọi database, mới hay cũ.
+
+```sql title="Migration 07 — biểu đồ phân tích, hot_videos, tham số chu kỳ"
+alter type media_kind_t add value if not exists 'analysis';
+alter table media add column if not exists caption text;
+alter table media add column if not exists position smallint;
+
+create table if not exists hot_videos (
+  run_id text not null references runs (id) on delete cascade,
+  kind text not null default 'video' check (kind in ('video', 'series')),
+  rank smallint not null check (rank between 1 and 50),   -- 1 = hottest within its kind
+  video_id text not null,                                  -- 'bi_BV…' or 'bi_ss<season>'; no foreign key: videos get cleaned up
+  platform text not null,
+  title text not null,
+  url text not null,
+  channel_title text,                                      -- series: rating and episodes, e.g. '9.8分 · 全12话'
+  views bigint not null default 0,                         -- series: total plays of the whole series
+  duration_sec int,
+  published_at timestamptz,
+  niche boolean not null default false,                    -- matched app_config.niche_terms or a niche ranking
+  viral_score double precision not null default 0,
+  created_at timestamptz not null default now(),
+  primary key (run_id, kind, rank)
+);
+create index if not exists hot_videos_created on hot_videos (created_at desc);
+alter table hot_videos enable row level security;
+
+alter table app_config add column if not exists bilibili_series_types int[] not null default '{}';
+alter table app_config add column if not exists niche_terms text[] not null default '{}';
+alter table app_config add column if not exists niche_boost double precision not null default 1
+  check (niche_boost between 1 and 10);
+alter table app_config add column if not exists youtube_search_every_hours int not null default 1
+  check (youtube_search_every_hours between 1 and 24);
+alter table app_config add column if not exists analysis_every_hours int not null default 1
+  check (analysis_every_hours between 1 and 24);
+```
+
+| Cột mới | Ý nghĩa |
+| --- | --- |
+| `app_config.bilibili_series_types` | Bảng xếp hạng series Bilibili (4 = 国创); rỗng = không lấy bảng xếp hạng |
+| `app_config.niche_terms` | Từ trong tiêu đề hoặc mô tả để coi video thuộc ngách |
+| `app_config.niche_boost` | Hệ số ưu tiên ngách khi xếp ý tưởng và danh sách hot (không đổi `viral_score`) |
+| `app_config.youtube_search_every_hours` | Tìm từ khoá YouTube chỉ khi giờ chia hết N: giữ quota 10.000 đơn vị/ngày |
+| `app_config.analysis_every_hours` | Vẽ và upload biểu đồ chỉ khi giờ chia hết N: giữ tải của image host |

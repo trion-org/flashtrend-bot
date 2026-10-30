@@ -86,16 +86,17 @@ Theo dõi quota: APIs & Services → Dashboard / Quotas. Free tier Gemini đủ 
 name: FlashTrend digest
 on:
   schedule:
-    - cron: "17 0 * * *"   # GitHub chỉ nhận UTC: 00:17 UTC = 07:17 giờ VN
+    - cron: "17 * * * *"   # mỗi giờ, phút 17; GitHub chỉ nhận UTC nhưng phút thì trùng giờ VN
   workflow_dispatch:
 jobs:
   digest:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       TZ: Asia/Ho_Chi_Minh   # log và giờ trong bot đều theo giờ Việt Nam
     steps:
       - uses: actions/checkout@v4
+      - run: fc-list :lang=zh | grep -q . || (sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk)  # font Hán cho biểu đồ
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - uses: actions/cache@v4
@@ -114,13 +115,13 @@ jobs:
           S3_URL: ${{ secrets.S3_URL }}
 ```
 
-GitHub luôn đọc cron theo UTC.[](source:actions-cron) Phút lệch `17` tránh hàng chờ đầu giờ. Muốn chạy lần hai thì thêm `- cron: "17 11 * * *"` (11:17 UTC = 18:17 giờ VN). Bản đầy đủ nên có thêm bước `python -m pip install --upgrade pip` và `restore-keys: ${{ runner.os }}-pip-` cho cache.
+GitHub luôn đọc cron theo UTC.[](source:actions-cron) Phút lệch `17` tránh hàng chờ đầu giờ; cron theo giờ có thể trễ vài phút khi GitHub bận. Việc nặng không chạy mỗi giờ mà theo `app_config` và **giờ Việt Nam**: tìm từ khoá YouTube mỗi `youtube_search_every_hours` giờ (6 → 00, 06, 12, 18h), vẽ và upload biểu đồ mỗi `analysis_every_hours` giờ (3). Runner Ubuntu không có font Hán, nên workflow cài `fonts-noto-cjk` khi thiếu; không có font thì chữ Hán bị bỏ khỏi nhãn biểu đồ. Bản đầy đủ nên có thêm bước `python -m pip install --upgrade pip` và `restore-keys: ${{ runner.os }}-pip-` cho cache.
 
-| Muốn chạy lúc (giờ VN) | Giờ UTC để ghi vào cron | cron |
-| --- | --- | --- |
-| 07:17 | 00:17 | `17 0 * * *` |
-| 09:17 | 02:17 | `17 2 * * *` |
-| 18:17 | 11:17 | `17 11 * * *` |
+| Muốn chạy | cron |
+| --- | --- |
+| Mỗi giờ (mặc định) | `17 * * * *` |
+| Mỗi 3 giờ | `17 */3 * * *` |
+| Một lần lúc 07:17 giờ VN (00:17 UTC) | `17 0 * * *` |
 
 Chạy thử: tab Actions → workflow **FlashTrend digest** → Run workflow. Log không được in `YOUTUBE_API_KEY`, `SERVICE_ROLE`, `GEMINI_API_KEY` (GitHub chỉ che khi trùng chuỗi chính xác). Nếu cài `torch` thì chỉ bản CPU: `pip install torch --index-url https://download.pytorch.org/whl/cpu`.
 
@@ -130,7 +131,8 @@ Chạy thử: tab Actions → workflow **FlashTrend digest** → Run workflow. L
 | sb1 | Tạo project | supabase.com → New project; tên `flashtrend-bot`; region Singapore (gần Việt Nam nhất); gói Free; lưu mật khẩu DB vào trình quản lý mật khẩu. |
 | sb2 | Lấy URL và key | Project Settings → API: Project URL → `SUPABASE_URL`; `service_role` → Reveal → `SUPABASE_SERVICE_ROLE_KEY` (JWT bắt đầu `eyJ`). |
 | sb3 | Chạy DDL | SQL Editor → New query → chạy lần lượt `sql/01_core.sql`, `02_media.sql`, `03_functions.sql`; `create extension if not exists vector` nằm đầu `01`. |
-| sb4 | Seed app_config | `sql/04_seed_app_config.sql` (chạy lại được, cập nhật hàng tại chỗ). Database tạo từ bản cũ của `01` thì chạy thêm `05_search_tuning.sql` và `06_bilibili.sql` **trước** `04`; chúng chỉ thêm cột, chạy lại không hại. |
+| sb3b | Migration 07 | `sql/07_analysis.sql` chạy trên **mọi** database, mới hay cũ: thêm loại ảnh `analysis`, cột `caption`/`position`, bảng `hot_videos` và các cột chu kỳ. Chạy lại không hại. |
+| sb4 | Seed app_config | `sql/04_seed_app_config.sql` (chạy lại được, cập nhật hàng tại chỗ). Thứ tự trên database đã có từ trước: `05_search_tuning.sql`, `06_bilibili.sql`, `07_analysis.sql`, rồi `03_functions.sql` (hàm dọn dẹp mới) và `04` cuối cùng; chúng chỉ thêm cột/bảng, chạy lại không hại. |
 | sb5 | Chung với estfstudio | Một project cho cả hai repo; thứ tự: DDL lõi, bảng `media`, rồi estfstudio chạy migration `estf_*` (mốc m1 trong kế hoạch của nó). |
 
 Connection string (chỉ khi sau này dùng `psycopg`): Project Settings → Database → URI chế độ Transaction pooler, cổng `6543`; lưu thành secret `SUPABASE_DB_URL`, không commit.

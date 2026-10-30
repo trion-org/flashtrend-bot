@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from application.observer import NullObserver, Observer
-from domain.models import Channel, VideoSnapshot
+from domain.models import Channel, HotSeries, VideoSnapshot
 from infrastructure import bilibili_api, youtube_api
 
 
@@ -33,8 +33,16 @@ class MultiSource:
             self._drain_warnings()
             self._obs.info(f"Bilibili: {len(found)} video(s) from {len(bilibili_keywords)} keyword(s)")
             seen = {v.id for v in videos}
-            videos = videos + [v for v in found if v.id not in seen]
+            videos += [v for v in found if v.id not in seen]
         return videos
+
+    def hot_series(self, season_types: tuple[int, ...], now: datetime) -> list[HotSeries]:
+        """Bilibili's live series ranking; empty without an adapter, a configured type, or an answer."""
+        if not (self._bilibili and season_types):
+            return []
+        series = self._bilibili.series_ranking(season_types)
+        self._drain_warnings()
+        return series
 
     def fetch_channels(self, channel_ids: list[str], now: datetime) -> list[Channel]:
         bili = [c for c in channel_ids if c.startswith(bilibili_api.PREFIX)]

@@ -12,6 +12,7 @@ from collections.abc import Callable, Iterable
 from datetime import datetime, timedelta
 from typing import TypeVar
 
+from application.ports import RunPoint
 from domain import errors as E
 from domain.clock import now_vn
 from domain.errors import FlashTrendError
@@ -19,6 +20,7 @@ from domain.models import (
     AppConfig,
     Candidate,
     Channel,
+    HotVideo,
     Idea,
     Media,
     PreviousSnapshot,
@@ -102,6 +104,11 @@ class SupabaseStore:
             chart_enabled=bool(r.get("chart_enabled", d.chart_enabled)),
             search_window_hours=int(r.get("search_window_hours", d.search_window_hours)),
             bilibili_keywords=tuple(r.get("bilibili_keywords") or ()),
+            bilibili_series_types=tuple(int(x) for x in (r.get("bilibili_series_types") or ())),
+            niche_terms=tuple(r.get("niche_terms") or ()),
+            niche_boost=float(r.get("niche_boost", d.niche_boost)),
+            youtube_search_every_hours=int(r.get("youtube_search_every_hours", d.youtube_search_every_hours)),
+            analysis_every_hours=int(r.get("analysis_every_hours", d.analysis_every_hours)),
         )
 
     # ------------------------------------------------------------------- runs
@@ -444,6 +451,35 @@ class SupabaseStore:
 
     _MEDIA_COLS = "id,owner,kind,url,host,sha256,bytes,width,height,video_id,run_id"
 
+    # ------------------------------------------------------------ hot videos
+
+    def insert_hot_videos(self, run_id: str, rows: list[HotVideo]) -> None:
+        payload = [
+            {
+                "run_id": run_id, "kind": h.kind, "rank": h.rank, "video_id": h.video_id,
+                "platform": h.platform, "title": h.title, "url": h.url, "channel_title": h.channel_title,
+                "views": h.views, "duration_sec": h.duration_sec,
+                "published_at": iso(h.published_at) if h.published_at else None, "niche": h.niche,
+                "viral_score": h.viral_score,
+            }
+            for h in rows
+        ]
+        self._write("insert hot videos", lambda: self._db.table("hot_videos").insert(payload).execute())
+
+    def recent_runs(self, limit: int) -> list[RunPoint]:
+        rows = self._write(
+            "read recent runs",
+            lambda: self._rows(
+                self._db.table("runs").select("started_at,collected,outliers,ideas_count")
+                .not_.is_("finished_at", "null").order("started_at", desc=True).limit(limit).execute()
+            ),
+        )
+        return [
+            RunPoint(parse_ts(r["started_at"]), int(r["collected"] or 0), int(r["outliers"] or 0),
+                     int(r["ideas_count"] or 0))
+            for r in reversed(rows)
+        ]
+
     def find_media(self, sha256: str) -> Media | None:
         rows = self._write(
             "find media",
@@ -467,6 +503,10 @@ class SupabaseStore:
             "width": media.width, "height": media.height, "video_id": media.video_id,
             "run_id": media.run_id,
         }
+        if media.caption is not None:  # columns exist only after sql/07; plain media never sends them
+            row["caption"] = media.caption
+        if media.position is not None:
+            row["position"] = media.position
         self._write("insert media", lambda: self._db.table("media").insert(row).execute())
 
     def list_media(self) -> list[Media]:

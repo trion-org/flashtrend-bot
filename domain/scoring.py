@@ -57,6 +57,15 @@ def median_raw_engagement(
     return statistics.median(raw_engagement(v, li, c, like_w, comment_w) for v, li, c in rows)
 
 
+def niche_match(title: str, description: str, terms: Sequence[str]) -> bool:
+    """Whether a video belongs to the niche: one of ``terms`` in its title or description.
+
+    Matching is a case-insensitive substring, so it works for Chinese (no word boundaries) as well.
+    """
+    text = f"{title}\n{description}".lower()
+    return any(t and t.lower() in text for t in terms)
+
+
 def engagement(
     views: int,
     likes: int,

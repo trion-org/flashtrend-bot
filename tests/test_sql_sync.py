@@ -36,8 +36,26 @@ class SqlSyncTest(unittest.TestCase):
 
     def test_seed_sets_every_niche_knob(self):
         seed = (ROOT / "sql/04_seed_app_config.sql").read_text(encoding="utf-8")
-        for field in ("keywords", "bilibili_keywords", "chart_enabled", "search_window_hours", "decay_lambda"):
+        for field in ("keywords", "bilibili_keywords", "bilibili_series_types", "niche_terms", "niche_boost",
+                      "chart_enabled", "search_window_hours", "decay_lambda", "youtube_search_every_hours",
+                      "analysis_every_hours", "snapshot_ttl_days"):
             self.assertRegex(seed, rf"{field} = excluded\.{field}")
+
+    def test_migration_07_is_the_docs_block_and_adds_every_new_column(self):
+        block = next(v for k, v in doc_blocks("06-bang-mo-rong.archify.md").items() if k.startswith("Migration 07"))
+        migration = (ROOT / "sql/07_analysis.sql").read_text(encoding="utf-8")
+        self.assertIn(block, migration)
+        for column in ("caption", "position", "bilibili_series_types", "niche_terms", "niche_boost",
+                       "youtube_search_every_hours", "analysis_every_hours"):
+            self.assertRegex(migration, rf"add column if not exists {column} ")
+        self.assertIn("create table if not exists hot_videos", migration)
+        self.assertIn("alter table hot_videos enable row level security", migration)
+        self.assertNotIn("create policy", migration)
+
+    def test_cleanup_is_safe_on_a_database_without_migration_07(self):
+        sql = (ROOT / "sql/03_functions.sql").read_text(encoding="utf-8")
+        self.assertIn("exception when undefined_table", sql)  # no hot_videos table yet
+        self.assertIn("kind::text = 'analysis'", sql)  # no enum value yet: compare as text
 
     def test_database_is_set_to_vietnam_time(self):
         sql = (ROOT / "sql/01_core.sql").read_text(encoding="utf-8")

@@ -5,7 +5,7 @@ Mọi thứ nằm trong **một project Supabase dùng chung với estfstudio**:
 - Z-Score phụ thuộc cohort nên chỉ sống ở `candidates` (mỗi run một hàng), không ở `videos`.[](source:idea)
 - Embedding tách bảng riêng và chiếm phần lớn dung lượng: TTL của nó quyết định quota.
 - Ảnh không nằm trong Supabase: bảng `media` chỉ giữ URL trên image host và `sha256`.
-- Free tạm dừng project sau 1 tuần không hoạt động; cron 1–2 lần/ngày giữ nó sống.[](source:pricing)
+- Free tạm dừng project sau 1 tuần không hoạt động; cron chạy hằng giờ giữ nó sống.[](source:pricing)
 
 @answer scope="Schema v1 từ bản thiết kế + bảng media mới · dung lượng là ước tính cho ~300 video mới/ngày, 2 run/ngày"
 @meta locale=vi

@@ -23,6 +23,11 @@ Job đọc bảng này **một lần ở đầu run** để lấy ngưỡng θ, 
 | `regions` | text[] | không | `regionCode` cho chart A1 (ISO 3166-1 alpha-2) | `{VN,JP}` |
 | `keywords` | text[] | không | Từ khoá cho `search.list` (A2); rỗng = chỉ dùng chart | `{python bot,ai tools,personal finance,street food,youtube shorts}` |
 | `bilibili_keywords` | text[], **đề xuất** | không | Từ khoá tiếng Trung cho tìm kiếm Bilibili; rỗng = tắt Bilibili | `{3D玄幻,修仙动画,AI漫剧}` |
+| `bilibili_series_types` | int[], **đề xuất** | không | Bảng xếp hạng series "đang hot" của Bilibili; `4` = 国创; rỗng = không lấy | `{4}` |
+| `niche_terms` | text[], **đề xuất** | không | Từ trong tiêu đề/mô tả để coi video thuộc ngách (khớp không phân biệt hoa thường) | `{国漫,国创,漫剧,修仙}` |
+| `niche_boost` | float, **đề xuất** | không | Hệ số ưu tiên của video ngách khi xếp ý tưởng và danh sách hot (1–10); không đổi `viral_score` | `3` |
+| `youtube_search_every_hours` | int, **đề xuất** | không | Tìm từ khoá YouTube chỉ khi giờ Việt Nam chia hết N | `6` |
+| `analysis_every_hours` | int, **đề xuất** | không | Vẽ và upload biểu đồ chỉ khi giờ Việt Nam chia hết N | `3` |
 | `z_threshold` | float | không | θ: giữ candidate khi `z_score >= θ` | `1.5` |
 | `cosine_threshold` | float | không | τ: hai tiêu đề chung cụm khi cosine ≥ τ | `0.70` |
 | `history_cosine_threshold` | float | không | τ_hist: bỏ ý tưởng nếu giống lịch sử 90 ngày ≥ ngưỡng (C3) | `0.80` |
@@ -62,6 +67,37 @@ Bilibili không có API công khai cho việc này, nên adapter gọi đúng ha
 - **Mỗi nền tảng một cohort.** Tỉ lệ của YouTube (view / view trung bình kênh) và của Bilibili (view / người theo dõi) khác thang đo, nên μ, σ, θ tính riêng từng nền tảng; điểm YouTube không đổi khi thêm Bilibili. Hàng `runs` ghi cohort của nền tảng lớn nhất; log liệt kê cả hai.
 - **Bilibili không bao giờ làm hỏng run.** Mỗi request thử lại sau 3, 8, 20 giây; từ khoá vẫn bị chặn thì bị bỏ qua và báo `warn`, các từ khoá khác và YouTube vẫn chạy. Giữa hai request có nghỉ 1 giây.
 - Mã nền tảng trong `id` là `bi_`: video `bi_BV1…`, kênh `bi_<mid>`.
+
+## Ưu tiên ngách, chạy mỗi giờ và biểu đồ phân tích {#uu-tien}
+
+**Ưu tiên ngách.** Video khớp `niche_terms` trong tiêu đề hoặc mô tả được nhân `niche_boost` khi xếp thứ tự ý tưởng, danh sách hot và thẻ đầu. Điểm `viral_score` lưu trong database không đổi, nên so sánh với các lần chạy cũ vẫn đúng. Từ khoá tìm kiếm một mình không đủ để coi là ngách (nó chỉ cho biết đã gõ gì, không cho biết kết quả là gì). Từ `3D动画` đứng một mình bị bỏ khỏi `niche_terms` vì khớp cả video súng và kỹ thuật.
+
+**Chạy mỗi giờ đổi ba ngân sách**, nên các việc nặng chạy thưa hơn (giờ tính theo giờ Việt Nam; chạy tay luôn làm đủ):
+
+| Việc | Chu kỳ | Tính toán | Nếu cứ mỗi giờ |
+| --- | --- | --- | --- |
+| Tìm từ khoá YouTube | `youtube_search_every_hours` = 6 | 8 từ khoá × 100 đơn vị × 4 lần = 3.200 / 10.000 đơn vị mỗi ngày | 19.200: vượt hạn mức |
+| Vẽ và upload biểu đồ | `analysis_every_hours` = 3 | 8 ảnh × 8 lần = 64 ảnh mỗi ngày | 192 ảnh mỗi ngày lên image host |
+| Giữ snapshot và candidate | `snapshot_ttl_days` = 14 | ~150 video × 24 lần × 14 ngày ≈ 50 nghìn hàng | 90 ngày sẽ vượt gói Free 500 MB |
+
+Giờ không tìm YouTube vẫn đọc Bilibili (không tốn quota), nên danh sách hot luôn mới. Snapshot theo giờ cho vận tốc và gia tốc view tốt hơn nhiều so với một lần mỗi ngày.
+
+**Danh sách hot.** Mỗi lần chạy ghi vào `hot_videos` tối đa 10 video Bilibili hot nhất theo độ ưu tiên (`kind = video`) và 10 series 国创 đứng đầu bảng xếp hạng sống của Bilibili (`kind = series`, ví dụ 灵笼 第二季). Đo ngày 31/10/2026: bảng xếp hạng *video* theo từng danh mục (`ranking/v2` với `rid` khác 0) đã đứng im từ tháng 3/2025, mọi mục cũ hơn 576 ngày, nên không dùng; chỉ bảng series còn sống. Bảng phẳng, có tiêu đề, link, kênh, lượt xem, thời lượng, cờ ngách. estfstudio đọc bảng này cho `/analysis`; nó không phụ thuộc `ideas` vì các lần chạy theo giờ thường không có ý tưởng mới (video đã đề xuất trong 90 ngày thì bị loại).
+
+**Tám biểu đồ** (ảnh PNG 1200×675 lên image host, `media.kind = 'analysis'`, có `caption` và `position`; mỗi ảnh ghi giờ chạy trong hình nên không bao giờ trùng `sha256` với lần khác):
+
+| Vị trí | Biểu đồ | Đọc để biết |
+| --- | --- | --- |
+| 1 | Video đang hot | Thẻ xếp hạng 8 video ưu tiên cao nhất, huy hiệu nền tảng và ngách |
+| 2 | Lượt xem và z-score | Video nào vượt trội so với nền tảng của nó (vòng vàng) |
+| 3 | Phân bố z-score | Cohort có lệch không, ngưỡng θ từng nền tảng nằm ở đâu |
+| 4 | Tỉ trọng nền tảng | Bilibili và YouTube chiếm bao nhiêu video và lượt xem |
+| 5 | Thời lượng video | Bao nhiêu video dài từ 1 giờ (tuyển tập nhiều tập) |
+| 6 | Giờ đăng | Khung giờ đăng nhiều video (giờ Việt Nam) |
+| 7 | Từ khoá hiệu quả nhất | Từ khoá cho lượt xem trung vị cao |
+| 8 | Các lần chạy gần đây | Số video thu được và outlier theo thời gian |
+
+Biểu đồ không đủ dữ liệu (dưới 5 video, chưa có video dài, mới chạy 1–2 lần) bị bỏ chứ không vẽ rỗng. Ảnh lỗi chỉ mất ảnh đó, không bao giờ làm hỏng run. Runner không có font Hán thì workflow cài `fonts-noto-cjk`.
 
 ## channels — baseline của kênh {#channels}
 

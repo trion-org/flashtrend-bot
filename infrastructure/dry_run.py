@@ -8,7 +8,7 @@ class DryRunStore:
     _WRITES = frozenset({
         "open_run", "finish_run", "upsert_channels", "upsert_videos", "insert_snapshots",
         "insert_candidates", "upsert_embeddings", "insert_ideas", "update_idea_llm",
-        "insert_media", "cleanup",
+        "insert_media", "insert_hot_videos", "cleanup",
     })
 
     def __init__(self, inner: DigestStore) -> None:

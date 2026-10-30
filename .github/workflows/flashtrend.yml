@@ -1,7 +1,8 @@
 name: FlashTrend digest
 on:
   schedule:
-    - cron: "17 0 * * *"   # GitHub chỉ nhận UTC: 00:17 UTC = 07:17 giờ Việt Nam
+    - cron: "17 * * * *"   # mỗi giờ, phút 17 (UTC và giờ Việt Nam cùng phút). Phần nặng chạy theo
+                           # app_config: youtube_search_every_hours, analysis_every_hours (giờ Việt Nam)
   workflow_dispatch:
     inputs:
       dry_run:
@@ -14,7 +15,7 @@ concurrency:
 jobs:
   digest:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15   # lần đầu hỏi thẻ của ~100 kênh Bilibili (có nghỉ giữa các request); sau đó có cache 24 giờ
     env:
       TZ: Asia/Ho_Chi_Minh   # log và giờ trong bot đều theo giờ Việt Nam
     steps:
@@ -28,6 +29,8 @@ jobs:
             ~/.cache/huggingface
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
           restore-keys: ${{ runner.os }}-pip-
+      - name: Fonts for the charts (Chinese titles need a CJK font; the runner has none by default)
+        run: fc-list :lang=zh | grep -q . || (sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk)
       - run: python -m pip install --upgrade pip
       # CPU-only torch first: the default Linux wheel pulls ~2 GB of CUDA libraries
       - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
@@ -46,4 +49,4 @@ jobs:
           name: flashtrend-output
           path: output/
           if-no-files-found: ignore
-          retention-days: 14
+          retention-days: 3

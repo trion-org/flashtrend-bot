@@ -1,7 +1,7 @@
 # FlashTrend (flashtrend-bot)
 
-A statistical-semantic filter that runs once or twice a day on GitHub Actions: it reads YouTube metadata
-through the official API, keeps the videos that beat **their own channel's** usual performance, merges
+A statistical-semantic filter that runs **every hour** on GitHub Actions: it reads YouTube and Bilibili
+metadata, keeps the videos that beat **their own channel's** usual performance, merges
 duplicate ideas, asks Gemini for a remake angle, and writes the digest to **Supabase**. The sister project
 **estfstudio** reads that digest from the same Supabase project.
 
@@ -14,8 +14,10 @@ Design docs (Vietnamese, Archify HTML): <https://trion-org.github.io/flashtrend-
 
 **Vietnam time only** (UTC+7, no daylight saving). Every timestamp the bot creates, logs, serialises or
 stores is `+07:00`; run ids are `run_YYYYMMDDTHHMMSS` in Vietnam time; the database is set to
-`Asia/Ho_Chi_Minh`. The one exception GitHub forces on us: cron expressions are UTC, so `17 0 * * *` is
-written in the workflow and means **07:17 Vietnam time**.
+`Asia/Ho_Chi_Minh`. The one exception GitHub forces on us: cron expressions are UTC. The workflow runs at
+minute 17 of every hour (`17 * * * *`); the minute is the same in both zones. The heavy parts follow Vietnam
+hours: YouTube keyword search every `youtube_search_every_hours` (6), analysis charts every
+`analysis_every_hours` (3).
 
 ## Pipeline
 
@@ -24,8 +26,12 @@ YouTube (chart + keywords + channel baselines) + Bilibili (keyword search, anony
   → L1 Z-Score per platform of views / channel_avg_views (Bilibili: / followers), Bayes engagement, time decay  → viral_score
   → L2 MiniLM embeddings, greedy cosine clusters (τ = 0.70), 90-day history (0.80)
   → L3 Gemini → ideas.llm (summary, why_viral, hook, 3 angles, format, risk)
-  → Supabase: runs · channels · videos · snapshots · candidates · embeddings · ideas · media
+  → Supabase: runs · channels · videos · snapshots · candidates · embeddings · ideas · media · hot_videos
 ```
+
+`hot_videos` holds, per run, the 10 hottest Bilibili videos (`kind = video`) and the top 10 of Bilibili's live
+国创 series ranking (`kind = series`); `media` holds the analysis charts (`kind = analysis`, with `caption` and
+`position`). estfstudio's Telegram `/analysis` reads both.
 
 `runs.status = 'ok'` only when every idea has a schema-valid `llm`. If anything fails after L2 the
 candidates and ideas are kept with `llm = null` and the run is `error` (estfstudio reads only `ok` runs).
@@ -34,7 +40,8 @@ candidates and ideas are kept with `llm = null` and the run is `error` (estfstud
 
 1. Supabase (Free, Singapore): run `sql/01_core.sql`, `02_media.sql`, `03_functions.sql`,
    `04_seed_app_config.sql` in the SQL Editor, in that order. A database made from an older `01` first
-   runs `05_search_tuning.sql` and `06_bilibili.sql` (they only add columns), then `04` again.
+   runs `05_search_tuning.sql`, `06_bilibili.sql` and `07_analysis.sql` (they only add columns and tables), then
+   `03_functions.sql` and `04` again.
 2. Four secrets (GitHub → Settings → Secrets, or a local `.env`): `SUPABASE_URL`,
    `SUPABASE_SERVICE_ROLE_KEY`, `YOUTUBE_API_KEY`, `GEMINI_API_KEY` — see `.env.example`.
 3. First run: Actions → **FlashTrend digest** → Run workflow with `dry_run` ticked.

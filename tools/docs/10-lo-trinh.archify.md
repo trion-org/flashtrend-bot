@@ -70,7 +70,7 @@ Bốn phase, mỗi phase chỉ bắt đầu khi phase trước đo được: **P
 | Region chính `VN`, có thể thêm `JP` | `app_config.regions` |
 | Gemini bắt buộc, `llm_enabled = true` | Key Google AI Studio |
 | Trọng số engagement và λ sẽ chỉnh sau | Chỉ đúng *hướng* (tương đối + ngữ nghĩa + thời gian), không tự nhận đúng tuyệt đối |
-| Supabase Free; cron 1–2 lần/ngày giữ project không pause | `service_role` chỉ trong GitHub Secrets |
+| Supabase Free; cron mỗi giờ giữ project không pause | `service_role` chỉ trong GitHub Secrets; snapshot giữ 14 ngày vì chạy dày gấp 24 lần |
 | Telegram không nằm trong repo này | estfstudio đọc cùng project, theo kế hoạch v1.1.0 của nó[](source:estf-plan) |
 
 ## Câu hỏi còn mở {#cau-hoi}

@@ -47,6 +47,7 @@ def source(*answers, waits=(1.0, 2.0)):
 class ParseTest(unittest.TestCase):
     def test_title_drops_highlight_tags_and_entities(self):
         self.assertEqual(B.clean_title('<em class="keyword">国漫</em> A &amp; B'), "国漫 A & B")
+        self.assertEqual(B.clean_title("全集 <合集> 第1集 <b>"), "全集 <合集> 第1集 <b>")  # not Bilibili's markup
 
     def test_duration(self):
         self.assertEqual(B.parse_duration("72:22"), 72 * 60 + 22)
@@ -152,9 +153,53 @@ class FakeBili:
         self.calls.append((keywords, window_hours))
         return self.videos
 
+    def series_ranking(self, season_types):
+        self.calls.append(("series", season_types))
+        return getattr(self, "ranked_series", [])
+
     def fetch_channels(self, ids, now):
         self.calls.append(("channels", tuple(ids)))
         return []
+
+
+def series(season_id=12548, rank=1, **kw):
+    base = {"season_id": season_id, "rank": rank, "title": "灵笼 第二季", "rating": "9.8分",
+            "url": f"https://www.bilibili.com/bangumi/play/ss{season_id}",
+            "new_ep": {"index_show": "全12话"}, "stat": {"view": 402_207_839}}
+    return {**base, **kw}
+
+
+class SeriesRankingTest(unittest.TestCase):
+    def test_a_series_entry_is_parsed(self):
+        src, _ = source({"code": 0, "result": {"list": [series(), series(5, 2, rating=None, new_ep={})]}})
+        got = src.series_ranking((4,))
+        self.assertEqual((got[0].rank, got[0].season_id, got[0].views, got[0].rating, got[0].episodes),
+                         (1, 12548, 402_207_839, "9.8分", "全12话"))
+        self.assertEqual((got[1].rating, got[1].episodes), (None, None))
+        self.assertIn("season_type=4", src._fetch.urls[0])
+
+    def test_entries_without_an_id_title_or_https_url_are_dropped(self):
+        bad = [series(season_id=None), series(2, title=""), series(3, url="http://x"), series(4)]
+        src, _ = source({"code": 0, "result": {"list": bad}})
+        self.assertEqual([s.season_id for s in src.series_ranking((4,))], [4])
+
+    def test_the_url_is_built_from_the_season_when_missing(self):
+        src, _ = source({"code": 0, "result": {"list": [series(url=None)]}})
+        self.assertEqual(src.series_ranking((4,))[0].url, "https://www.bilibili.com/bangumi/play/ss12548")
+
+    def test_a_limit_keeps_only_the_top(self):
+        src, _ = source({"code": 0, "result": {"list": [series(i, i) for i in range(1, 30)]}})
+        self.assertEqual(len(src.series_ranking((4,), limit=10)), 10)
+
+    def test_an_unreachable_ranking_warns_and_returns_nothing(self):
+        src, _ = source(*[http(412)] * 3)
+        self.assertEqual(src.series_ranking((4,)), [])
+        self.assertTrue(any("series ranking 4 skipped" in w for w in src.warnings))
+
+    def test_no_types_asks_nothing(self):
+        src, _ = source()
+        self.assertEqual(src.series_ranking(()), [])
+        self.assertEqual(src._fetch.urls, [])
 
 
 class MultiSourceTest(unittest.TestCase):

@@ -1,6 +1,6 @@
 # FlashTrend làm gì và chạy ở đâu? {#tong-quan}
 
-FlashTrend là **bộ lọc thống kê–ngữ nghĩa** chạy 1–2 lần/ngày trên GitHub Actions: lấy video YouTube, giữ video vượt trội so với chính kênh của nó, gộp ý tưởng trùng, nhờ Gemini viết góc làm lại, rồi ghi vào Supabase để **estfstudio** đọc.
+FlashTrend là **bộ lọc thống kê–ngữ nghĩa** chạy **mỗi giờ** trên GitHub Actions: lấy video YouTube, giữ video vượt trội so với chính kênh của nó, gộp ý tưởng trùng, nhờ Gemini viết góc làm lại, rồi ghi vào Supabase để **estfstudio** đọc.
 
 - Không reup, không tải video ở MVP: chỉ đọc metadata qua API chính thức.[](source:idea)
 - Supabase là nguồn sự thật duy nhất; JSON/PNG trên Actions chỉ để debug.[](source:idea)
@@ -32,7 +32,7 @@ Câu hỏi nghiên cứu: kết hợp API chính thức, trình trích metadata,
 | Sản phẩm lõi (MVP) | Thu thập + chấm điểm + góc làm lại của Gemini → ghi Supabase |
 | Bên đọc | estfstudio (repo riêng) đọc thẳng Supabase và gửi Telegram |
 | Mở rộng (v2) | Lấy nguồn → biến đổi → upload/hẹn lịch qua YouTube Data API v3 |
-| Chạy ở đâu | GitHub Actions, repo public + Secrets, 1–2 lần/ngày |
+| Chạy ở đâu | GitHub Actions, repo public + Secrets, mỗi giờ (phần nặng chạy thưa hơn: trang 04) |
 | Lưu ở đâu | Supabase (Postgres + pgvector) là nguồn sự thật; JSON/PNG chỉ là bản xuất |
 | LLM | Gemini API bắt buộc (key Google AI Studio) |
 | Ngôn ngữ | Python 3.12 trên Actions (mã chạy được từ 3.10; Google đã ngừng hỗ trợ 3.10) |
@@ -57,7 +57,7 @@ GitHub Actions là nơi duy nhất gọi API bên ngoài. estfstudio chỉ đọ
 | estf > db | đọc digest |
 
 @steps id=he-thong-steps
-| s-cron | GitHub Actions cron | Chạy lúc **07:17 giờ Việt Nam** hằng ngày (cron `17 0 * * *`: GitHub chỉ nhận cron theo UTC, 00:17 UTC = 07:17 giờ VN), có `workflow_dispatch` để chạy tay; timeout 10 phút. | he-thong | cron |
+| s-cron | GitHub Actions cron | Chạy **mỗi giờ, phút 17** (cron `17 * * * *`; GitHub chỉ nhận UTC, phút thì trùng giờ Việt Nam), có `workflow_dispatch` để chạy tay (chạy tay luôn làm đủ mọi việc); timeout 15 phút. | he-thong | cron |
 | s-yt | YouTube Data API | Chart `mostPopular` theo region + `search.list` theo từ khoá + baseline kênh. Chỉ cần API key. | he-thong | yt |
 | s-gem | Gemini API | Chỉ đọc 3–5 ý tưởng đã lọc; trả JSON `summary`, `hook`, `angles[3]`, `risk`. | he-thong | gem |
 | s-img | Image host | Upload biểu đồ của run, nhận URL công khai, ghi vào bảng `media`. | he-thong | img |
