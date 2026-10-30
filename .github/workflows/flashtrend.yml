@@ -1,0 +1,48 @@
+name: FlashTrend digest
+on:
+  schedule:
+    - cron: "17 0 * * *"   # GitHub chỉ nhận UTC: 00:17 UTC = 07:17 giờ Việt Nam
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Đọc dữ liệu thật nhưng không ghi gì, không gọi Gemini"
+        type: boolean
+        default: false
+concurrency:
+  group: flashtrend
+  cancel-in-progress: false
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TZ: Asia/Ho_Chi_Minh   # log và giờ trong bot đều theo giờ Việt Nam
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.10" }
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.cache/huggingface
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
+      - run: python -m pip install --upgrade pip
+      # CPU-only torch first: the default Linux wheel pulls ~2 GB of CUDA libraries
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install -r requirements.txt
+      - name: Run the digest
+        run: python main.py run --output-dir output ${{ inputs.dry_run && '--dry-run' || '' }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flashtrend-output
+          path: output/
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,0 +1,8 @@
+# Runtime deps for GitHub Actions (Python 3.10). Install the CPU-only torch BEFORE this file:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+numpy>=1.26
+requests>=2.31
+supabase>=2.5
+google-api-python-client>=2.130
+sentence-transformers>=3.0
+matplotlib>=3.8
