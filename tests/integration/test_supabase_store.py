@@ -53,6 +53,7 @@ class SupabaseStoreIntegrationTest(unittest.TestCase):
         self.assertIn("Chinese AI animation", c.keywords)
         self.assertEqual((len(c.keywords), c.regions), (8, ("VN",)))
         self.assertEqual((c.chart_enabled, c.search_window_hours, c.decay_lambda), (False, 168, 0.01))
+        self.assertEqual(c.bilibili_keywords, ("3D玄幻", "3D国漫", "修仙动画", "国漫", "AI漫剧", "AI动画"))
 
     def test_02_full_run_writes_everything_the_docs_promise(self):
         r = self.run_digest()

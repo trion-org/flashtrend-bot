@@ -28,9 +28,15 @@ class SqlSyncTest(unittest.TestCase):
             self.assertIn(f"add column {column}", core)
             self.assertIn(f"add column if not exists {column}", migration)
 
+    def test_bilibili_column_is_in_both_the_fresh_schema_and_the_migration(self):
+        core = (ROOT / "sql/01_core.sql").read_text(encoding="utf-8")
+        migration = (ROOT / "sql/06_bilibili.sql").read_text(encoding="utf-8")
+        self.assertIn("add column bilibili_keywords text[]", core)
+        self.assertIn("add column if not exists bilibili_keywords text[]", migration)
+
     def test_seed_sets_every_niche_knob(self):
         seed = (ROOT / "sql/04_seed_app_config.sql").read_text(encoding="utf-8")
-        for field in ("keywords", "chart_enabled", "search_window_hours", "decay_lambda"):
+        for field in ("keywords", "bilibili_keywords", "chart_enabled", "search_window_hours", "decay_lambda"):
             self.assertRegex(seed, rf"{field} = excluded\.{field}")
 
     def test_database_is_set_to_vietnam_time(self):

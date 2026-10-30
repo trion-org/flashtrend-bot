@@ -129,8 +129,8 @@ Chạy thử: tab Actions → workflow **FlashTrend digest** → Run workflow. L
 @steps id=sb-steps
 | sb1 | Tạo project | supabase.com → New project; tên `flashtrend-bot`; region Singapore (gần Việt Nam nhất); gói Free; lưu mật khẩu DB vào trình quản lý mật khẩu. |
 | sb2 | Lấy URL và key | Project Settings → API: Project URL → `SUPABASE_URL`; `service_role` → Reveal → `SUPABASE_SERVICE_ROLE_KEY` (JWT bắt đầu `eyJ`). |
-| sb3 | Chạy DDL | SQL Editor → New query → dán DDL lõi + bảng `media` (trang 03 · Dữ liệu) → Run; `create extension if not exists vector` nằm đầu DDL. |
-| sb4 | Seed app_config | `insert into app_config (keywords, regions, llm_enabled) …`; chạy lần hai sẽ lỗi khoá chính, khi đó dùng `update … where id = 1`. |
+| sb3 | Chạy DDL | SQL Editor → New query → chạy lần lượt `sql/01_core.sql`, `02_media.sql`, `03_functions.sql`; `create extension if not exists vector` nằm đầu `01`. |
+| sb4 | Seed app_config | `sql/04_seed_app_config.sql` (chạy lại được, cập nhật hàng tại chỗ). Database tạo từ bản cũ của `01` thì chạy thêm `05_search_tuning.sql` và `06_bilibili.sql` **trước** `04`; chúng chỉ thêm cột, chạy lại không hại. |
 | sb5 | Chung với estfstudio | Một project cho cả hai repo; thứ tự: DDL lõi, bảng `media`, rồi estfstudio chạy migration `estf_*` (mốc m1 trong kế hoạch của nó). |
 
 Connection string (chỉ khi sau này dùng `psycopg`): Project Settings → Database → URI chế độ Transaction pooler, cổng `6543`; lưu thành secret `SUPABASE_DB_URL`, không commit.
@@ -161,14 +161,12 @@ Chỉ cần khi đăng video **bạn có quyền**. App chưa qua OAuth Verifica
 | o4 | Lưu secret | `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN`; access token sống ~1 giờ, script tự xin lại bằng refresh token. |
 | o5 | Production | Gửi OAuth Verification trước khi kỳ vọng `publishAt` tự công khai video. |
 
-## v2: cookie cho yt-dlp {#cookie}
+## Cookie Bilibili: flashtrend-bot không cần {#cookie}
 
-Cookie là thông tin đăng nhập: chỉ để trong Secret hoặc tệp cục bộ, không bao giờ commit `cookies.txt`.
+flashtrend-bot **chỉ tìm kiếm** và tìm Bilibili ẩn danh (trang 04), nên không có secret `BILI_COOKIES`. Cookie đăng nhập chỉ cần khi **tải** video chất lượng cao, và việc tải thuộc estfstudio: nó đọc `.secrets/cookies.txt` ở máy bạn, đưa cho yt-dlp một bản sao chỉ chứa cookie Bilibili, và cảnh báo khi phiên sắp hết hạn (tài liệu estfstudio v1.1.0, trang 02).
 
-- [ ] Đăng nhập Bilibili/Douyin bằng tài khoản của bạn, xuất cookie dạng Netscape (tiện ích kiểu "Get cookies.txt LOCALLY").
-- [ ] Máy cục bộ: `yt-dlp --cookies cookies.txt "URL"`.
-- [ ] Actions: lưu toàn bộ nội dung tệp vào secret `BILI_COOKIES`, job ghi ra tệp tạm và xoá sau khi chạy.
-- [ ] Cookie hết hạn thì xuất lại; không dùng cookie của người khác.
+- Cookie là thông tin đăng nhập: không bao giờ commit `cookies.txt`, không đặt vào GitHub Secrets của repo công khai này.
+- Cookie xuất từ trình duyệt sống khoảng một ngày; không dùng cookie của người khác.
 
 ## Chạy trên máy cục bộ {#local}
 
@@ -184,6 +182,7 @@ uv sync --extra dev --extra chart            # hoặc pip install -r requirement
 python main.py run --dry-run --output-dir output
 python main.py run                           # ghi thật vào Supabase
 python main.py check-media                   # HEAD mọi link ảnh, đặt alive=false khi 404
+python main.py check-bilibili                # một lần tìm Bilibili + thẻ kênh, không cần secret (workflow `Bilibili check`)
 ```
 
 ```bash title="Kiểm tra key Gemini (không commit)"

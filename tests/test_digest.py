@@ -239,6 +239,62 @@ class SearchConfigTest(unittest.TestCase):
         self.assertEqual(source.collect_args[2:], (True, 48))
 
 
+class PerPlatformCohortTest(unittest.TestCase):
+    """A Bilibili ratio is views per follower, a YouTube one views per average view: never one cohort."""
+
+    @staticmethod
+    def bilibili(n):
+        from domain.models import Channel, VideoSnapshot
+
+        videos, channels = [], []
+        for i in range(n):
+            videos.append(VideoSnapshot(
+                id=f"bi_BV{i}", platform="bilibili", native_id=f"BV{i}", url=f"https://b/{i}",
+                title=f"国漫 第{i}集", description="", published_at=NOW - timedelta(hours=10),
+                channel_id=f"bi_{i}", duration_sec=3600, thumbnail_url=None,
+                views=1_000 * (i + 1) ** 2, likes=10, comments=1, captured_at=NOW))
+            channels.append(Channel(
+                id=f"bi_{i}", platform="bilibili", native_id=str(i), title=f"up{i}",
+                subscriber_count=2_000_000, video_count=10, channel_avg_views=2_000_000.0,
+                fetched_at=NOW, stale_after=NOW + timedelta(hours=24)))
+        return videos, channels
+
+    def run_digest(self, with_bilibili):
+        videos, channels = FakeSource().videos, list(FakeSource().channels.values())
+        if with_bilibili:
+            more, more_ch = self.bilibili(4)
+            videos, channels = videos + more, channels + more_ch
+        uc, store, obs = make(source=FakeSource(videos, channels))
+        uc.run()
+        return {c.video.id: c for c in store.candidates}, store, obs
+
+    def test_youtube_scores_do_not_move_when_bilibili_joins(self):
+        alone, _, _ = self.run_digest(False)
+        mixed, _, _ = self.run_digest(True)
+        for vid, cand in alone.items():
+            self.assertAlmostEqual(mixed[vid].z_score, cand.z_score, places=9)
+
+    def test_bilibili_is_scored_against_its_own_cohort(self):
+        from domain import scoring
+
+        mixed, _, _ = self.run_digest(True)
+        ratios = [scoring.performance_ratio(1_000 * (i + 1) ** 2, 2_000_000.0) for i in range(4)]
+        mu, sigma = scoring.cohort_mu_sigma(ratios)
+        for i, ratio in enumerate(ratios):
+            self.assertAlmostEqual(mixed[f"bi_BV{i}"].z_score, scoring.z_score(ratio, mu, sigma), places=9)
+
+    def test_the_run_row_records_the_largest_cohort_and_the_log_lists_both(self):
+        _, store, obs = self.run_digest(True)
+        self.assertEqual(store.runs["run_20261028T071712"]["stats"].cohort.n, 5)  # YouTube's 5 videos, not 9
+        self.assertTrue(any(line.startswith("cohorts:") and "bilibili n=4" in line and "youtube n=5" in line
+                            for line in obs.lines))
+
+    def test_bilibili_keywords_reach_the_source(self):
+        source = FakeSource()
+        make(store=FakeStore(AppConfig(bilibili_keywords=("国漫",))), source=source)[0].run()
+        self.assertEqual(source.bilibili_keywords, ("国漫",))
+
+
 class BaselineTest(unittest.TestCase):
     def test_fresh_cached_channels_are_not_refetched(self):
         store = FakeStore()

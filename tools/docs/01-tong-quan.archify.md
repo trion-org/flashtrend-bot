@@ -125,7 +125,7 @@ flashtrend-bot/
   infrastructure/  # youtube_api, supabase_store, gemini, embedder, image_host, chart, settings
   presentation/    # cli, log, output (điểm vào cho Actions: main.py)
   composition_root.py   # nơi duy nhất nối adapter vào use case
-  sql/             # 01_core · 02_media · 03_functions · 04_seed_app_config
+  sql/             # 01_core · 02_media · 03_functions · 04_seed_app_config · 05_search_tuning · 06_bilibili
   tests/           # unit + architecture + integration (PostgREST thật)
   output/          # bản xuất json + png tuỳ chọn (không phải nguồn sự thật)
   .github/workflows/  # flashtrend.yml · media-check.yml · ci.yml

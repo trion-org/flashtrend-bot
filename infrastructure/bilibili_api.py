@@ -1,0 +1,195 @@
+"""Bilibili adapter — keyword search plus a follower-based channel baseline. Metadata only, no login.
+
+Bilibili has no public API for this, so it reads the web endpoints the site itself calls, anonymously:
+
+* ``x/web-interface/search/type`` — ``order=click`` with ``pubtime_begin_s/_end_s``: the most-played videos
+  of a keyword inside the window (20 per page), with play, like and comment counts. Measured 2026-10-31.
+* ``x/web-interface/card`` — a channel's ``fans``, ``archive_count`` and received likes. The endpoint that
+  would give a channel's recent plays (``space/wbi/arc/search``) answers ``-352`` to anonymous callers,
+  so the baseline is the follower count: a video's ratio is *views per follower*.
+
+Its anti-bot layer answers some requests with HTTP 412 at random (the same URL passes a moment later),
+so every request is retried after a wait; a keyword that stays blocked is skipped and reported, never
+fatal — a blocked Bilibili must not cost the YouTube digest. No cookie is used: the repo is public and
+the cookie of a personal account does not belong in GitHub Actions.
+"""
+from __future__ import annotations
+
+import html
+import json
+import re
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from collections.abc import Callable
+from datetime import datetime, timedelta
+
+from domain.clock import to_vn
+from domain.models import Channel, VideoSnapshot
+
+PLATFORM = "bilibili"
+PREFIX = "bi_"
+CHANNEL_CACHE = timedelta(hours=24)
+DESCRIPTION_MAX_CHARS = 500
+SEARCH_URL = "https://api.bilibili.com/x/web-interface/search/type"
+CARD_URL = "https://api.bilibili.com/x/web-interface/card"
+HEADERS = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)", "Referer": "https://www.bilibili.com/"}
+WAITS = (3.0, 8.0, 20.0)  # seconds before each retry of a blocked request
+PAGE_SIZE = 20
+
+_TAGS = re.compile(r"<[^>]+>")
+
+
+class BilibiliUnavailable(Exception):
+    """A request stayed blocked or malformed after every retry."""
+
+
+def clean_title(raw: str) -> str:
+    """Search results wrap the matched words in ``<em class="keyword">``; drop tags and entities."""
+    return html.unescape(_TAGS.sub("", raw or "")).strip()
+
+
+def parse_duration(value) -> int | None:
+    """``"72:22"`` / ``"1:02:03"`` → seconds; None when missing or unparseable."""
+    try:
+        parts = [int(p) for p in str(value).split(":")]
+    except ValueError:
+        return None
+    if not parts or len(parts) > 3:
+        return None
+    total = 0
+    for p in parts:
+        total = total * 60 + p
+    return total or None
+
+
+def _int(value) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _https(url: str | None) -> str | None:
+    return ("https:" + url) if url and url.startswith("//") else (url or None)
+
+
+def http_json(url: str) -> dict:
+    """GET ``url`` → decoded JSON. Raises ``urllib.error.URLError`` / ``ValueError`` on failure."""
+    with urllib.request.urlopen(urllib.request.Request(url, headers=HEADERS), timeout=20) as resp:
+        return json.load(resp)
+
+
+class BilibiliSource:
+    """Keyword search and channel baselines for Bilibili. ``fetch`` and ``sleep`` are injectable."""
+
+    def __init__(
+        self,
+        fetch: Callable[[str], dict] = http_json,
+        sleep: Callable[[float], None] = time.sleep,
+        waits: tuple[float, ...] = WAITS,
+        pause: float = 1.0,
+    ) -> None:
+        self._fetch = fetch
+        self._sleep = sleep
+        self._waits = waits
+        self._pause = pause  # between two requests, so a burst does not look like a bot
+        self.warnings: list[str] = []
+
+    # ----------------------------------------------------------------- search
+
+    def collect(self, keywords: tuple[str, ...], now: datetime, window_hours: int) -> list[VideoSnapshot]:
+        found: dict[str, VideoSnapshot] = {}
+        end = int(now.timestamp())
+        begin = int((now - timedelta(hours=window_hours)).timestamp())
+        for i, keyword in enumerate(keywords):
+            if i:
+                self._sleep(self._pause)
+            params = {"search_type": "video", "keyword": keyword, "order": "click", "page": 1,
+                      "pubtime_begin_s": begin, "pubtime_end_s": end}
+            try:
+                data = self._get(SEARCH_URL, params)
+            except BilibiliUnavailable as exc:
+                self.warnings.append(f"Bilibili search {keyword!r} skipped: {exc}")
+                continue
+            for item in (data.get("data") or {}).get("result") or []:
+                video = self._parse(item, now, keyword)
+                if video:
+                    found.setdefault(video.id, video)
+        return list(found.values())
+
+    @staticmethod
+    def _parse(item: dict, now: datetime, tag: str) -> VideoSnapshot | None:
+        bvid, mid, pubdate = item.get("bvid"), item.get("mid"), item.get("pubdate")
+        if not bvid or not mid or not pubdate:
+            return None
+        return VideoSnapshot(
+            id=PREFIX + bvid,
+            platform=PLATFORM,
+            native_id=bvid,
+            url=f"https://www.bilibili.com/video/{bvid}",
+            title=clean_title(item.get("title", "")),
+            description=clean_title(item.get("description", ""))[:DESCRIPTION_MAX_CHARS],
+            published_at=to_vn(datetime.fromtimestamp(int(pubdate), tz=now.tzinfo)),
+            channel_id=PREFIX + str(mid),
+            duration_sec=parse_duration(item.get("duration")),
+            thumbnail_url=_https(item.get("pic")),
+            views=_int(item.get("play")),
+            likes=_int(item.get("like")),
+            comments=_int(item.get("review")),
+            captured_at=to_vn(now),
+            query_tag=tag,
+        )
+
+    # --------------------------------------------------------------- channels
+
+    def fetch_channels(self, channel_ids: list[str], now: datetime) -> list[Channel]:
+        out: list[Channel] = []
+        for i, cid in enumerate(channel_ids):
+            if i:
+                self._sleep(self._pause)
+            mid = cid.removeprefix(PREFIX)
+            try:
+                data = self._get(CARD_URL, {"mid": mid, "photo": "false"})
+            except BilibiliUnavailable as exc:
+                self.warnings.append(f"Bilibili channel {mid} skipped: {exc}")
+                continue
+            body = data.get("data") or {}
+            card = body.get("card") or {}
+            fans = _int(card.get("fans"))
+            out.append(
+                Channel(
+                    id=cid,
+                    platform=PLATFORM,
+                    native_id=mid,
+                    title=card.get("name") or mid,
+                    subscriber_count=fans or None,
+                    video_count=_int(body.get("archive_count")) or None,
+                    channel_avg_views=float(fans),  # followers as the baseline: ratio = views per follower
+                    fetched_at=now,
+                    stale_after=now + CHANNEL_CACHE,
+                )
+            )
+        return out
+
+    # ------------------------------------------------------------------- http
+
+    def _get(self, url: str, params: dict) -> dict:
+        """GET with retries on the anti-bot answers (HTTP 412, ``code`` -412/-352) and network errors."""
+        full = f"{url}?{urllib.parse.urlencode(params)}"
+        last = "no attempt"
+        for wait in (*self._waits, None):
+            try:
+                data = self._fetch(full)
+                code = data.get("code")
+                if code == 0:
+                    return data
+                last = f"code {code} {data.get('message', '')}".strip()
+            except urllib.error.HTTPError as exc:
+                last = f"HTTP {exc.code}"
+            except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
+                last = type(exc).__name__
+            if wait is not None:
+                self._sleep(wait)
+        raise BilibiliUnavailable(last)

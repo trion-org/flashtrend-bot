@@ -20,8 +20,8 @@ written in the workflow and means **07:17 Vietnam time**.
 ## Pipeline
 
 ```
-YouTube (chart + keywords + channel baselines)
-  → L1 Z-Score of views / channel_avg_views, Bayes engagement, time decay  → viral_score
+YouTube (chart + keywords + channel baselines) + Bilibili (keyword search, anonymous, best effort)
+  → L1 Z-Score per platform of views / channel_avg_views (Bilibili: / followers), Bayes engagement, time decay  → viral_score
   → L2 MiniLM embeddings, greedy cosine clusters (τ = 0.70), 90-day history (0.80)
   → L3 Gemini → ideas.llm (summary, why_viral, hook, 3 angles, format, risk)
   → Supabase: runs · channels · videos · snapshots · candidates · embeddings · ideas · media
@@ -33,7 +33,8 @@ candidates and ideas are kept with `llm = null` and the run is `error` (estfstud
 ## Setup
 
 1. Supabase (Free, Singapore): run `sql/01_core.sql`, `02_media.sql`, `03_functions.sql`,
-   `04_seed_app_config.sql` in the SQL Editor, in that order.
+   `04_seed_app_config.sql` in the SQL Editor, in that order. A database made from an older `01` first
+   runs `05_search_tuning.sql` and `06_bilibili.sql` (they only add columns), then `04` again.
 2. Four secrets (GitHub → Settings → Secrets, or a local `.env`): `SUPABASE_URL`,
    `SUPABASE_SERVICE_ROLE_KEY`, `YOUTUBE_API_KEY`, `GEMINI_API_KEY` — see `.env.example`.
 3. First run: Actions → **FlashTrend digest** → Run workflow with `dry_run` ticked.
@@ -44,6 +45,7 @@ uv sync --extra embed                    # + sentence-transformers (install CPU-
 uv run python main.py run --dry-run --output-dir output
 uv run python main.py run                # writes to Supabase
 uv run python main.py check-media        # weekly in CI: HEAD every media URL
+uv run python main.py check-bilibili     # one anonymous Bilibili search + channel card, no secrets
 uv run pytest -q                         # unit + architecture tests
 tests/integration/run.sh                 # SupabaseStore vs real Postgres+pgvector+PostgREST (Docker)
 ```

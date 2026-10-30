@@ -23,6 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--output-dir", default=None,
                      help="also write <run_id>_digest.json and the chart PNG here (debug only)")
     sub.add_parser("check-media", help="HEAD every media URL; mark 404s alive=false")
+    sub.add_parser("check-bilibili", help="one anonymous Bilibili search + channel card (no secrets needed)")
     p.set_defaults(command="run", dry_run=False, output_dir=None)
     return p
 
@@ -30,6 +31,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None, observer: Observer | None = None) -> int:
     args = build_parser().parse_args(argv)
     cfg.load_dotenv()
+    if args.command == "check-bilibili":  # reads Bilibili anonymously: needs none of the four secrets
+        from composition_root import build_bilibili_check
+
+        return EXIT_OK if build_bilibili_check(observer or LogObserver(())).run() else EXIT_RUN_ERROR
     try:
         settings = cfg.from_env()
     except (cfg.MissingSettings, ValueError) as exc:

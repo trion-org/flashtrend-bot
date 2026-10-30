@@ -171,7 +171,8 @@ class RunDigest:
 
         # w2 — collect, channel baselines, videos, snapshots
         videos = self._source.collect(
-            config.regions, config.keywords, now, config.chart_enabled, config.search_window_hours
+            config.regions, config.keywords, now, config.chart_enabled, config.search_window_hours,
+            config.bilibili_keywords,
         )
         stats.collected = len(videos)
         channels = self._baselines(videos, now)
@@ -226,14 +227,20 @@ class RunDigest:
             scoring.performance_ratio(v.views, channels[v.channel_id].channel_avg_views)
             for v in videos
         ]
-        mu, sigma = scoring.cohort_mu_sigma(ratios)
+        # One cohort per platform: a YouTube ratio is views / the channel's average views, a Bilibili one
+        # is views / followers — their means and spreads must never be mixed into one Z-Score.
+        cohorts: dict[str, tuple[float | None, float | None, float]] = {}
+        for platform in sorted({v.platform for v in videos}):
+            members = [r for v, r in zip(videos, ratios, strict=True) if v.platform == platform]
+            p_mu, p_sigma = scoring.cohort_mu_sigma(members)
+            p_theta = scoring.choose_z_threshold(
+                len(members), config.z_threshold, config.relaxed_z_threshold, config.min_cohort_n
+            )
+            cohorts[platform] = (p_mu, p_sigma, p_theta)
         prior_m = scoring.median_raw_engagement(
             [(v.views, v.likes, v.comments) for v in videos],
             config.engagement_like_w,
             config.engagement_comment_w,
-        )
-        theta = scoring.choose_z_threshold(
-            len(videos), config.z_threshold, config.relaxed_z_threshold, config.min_cohort_n
         )
         prev = self._store.previous_snapshots([v.id for v in videos], now, 2) if videos else {}
 
@@ -244,6 +251,7 @@ class RunDigest:
                 config.engagement_like_w, config.engagement_comment_w,
             )
             decay = scoring.time_decay(v.age_hours, config.decay_lambda)
+            mu, sigma, theta = cohorts[v.platform]
             z = scoring.z_score(ratio, mu, sigma)
             vel, acc = _velocity_acceleration(v, prev.get(v.id, []))
             candidates.append(
@@ -264,7 +272,15 @@ class RunDigest:
         high = statistics.median(velocities) if velocities else None
         for c in candidates:
             c.early_flag = scoring.early_flag(c.velocity, c.acceleration, high)
-        cohort = CohortStats(len(videos), mu, sigma, prior_m, theta)
+        # the run row records the largest platform's cohort; the others are logged
+        sizes = {p: sum(1 for v in videos if v.platform == p) for p in cohorts}
+        main = max(sizes, key=lambda p: (sizes[p], p == "youtube")) if sizes else None
+        mu, sigma, theta = cohorts[main] if main else (None, None, config.z_threshold)
+        if len(cohorts) > 1:
+            self._obs.info("cohorts: " + "; ".join(
+                f"{p} n={sizes[p]} μ={_f(cohorts[p][0])} σ={_f(cohorts[p][1])} θ={cohorts[p][2]}"
+                for p in cohorts))
+        cohort = CohortStats(sizes[main] if main else 0, mu, sigma, prior_m, theta)
         return candidates, cohort
 
     def _dedup(

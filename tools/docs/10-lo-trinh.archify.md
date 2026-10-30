@@ -28,7 +28,7 @@ Bốn phase, mỗi phase chỉ bắt đầu khi phase trước đo được: **P
 | ph1 | Phase 1 Discover | Khoảng 1 tuần làm việc, sau Phase 0 (khoá spec: MVP = thu thập + chấm điểm + báo cáo, upload để Phase 3). YouTube chart + từ khoá + baseline kênh; B1–B3, B6; MiniLM + cosine; schema Supabase; Gemini → `ideas.llm`; Actions + cache + timeout, artifact JSON/PNG; ảnh qua image host; hợp đồng đọc cho estfstudio (run `ok` + ideas xếp hạng). |
 | ph-g | Cổng Precision@5 | Đo trên nhãn `feedback` của 2 tuần digest trước khi mở rộng. Nhãn đến từ nút 👍 / 👎 của estfstudio (mốc m4 trong kế hoạch của nó), nên Phase 1 chỉ đo được sau m4.[](source:estf-plan) |
 | ph2 | Phase 2 Tín hiệu | Snapshot → vận tốc và gia tốc view; transcript vào embedding; lọc trùng 90 ngày; TikTok/Facebook allowlist. |
-| ph3 | Phase 3 Đăng | OAuth + test user; resumable upload với `publishAt`; biến đổi kiểu commentary/review, không dựa vào crop/flip. |
+| ph3 | Phase 3 Đăng | **Không làm trong repo này** (quyết định 2026-10-31: flashtrend-bot chỉ tìm từ khoá xu hướng; tải và đăng thuộc estfstudio). Thiết kế giữ lại ở trang 09: OAuth + test user; resumable upload với `publishAt`; biến đổi kiểu commentary/review, không dựa vào crop/flip. |
 | ph4 | Phase 4 Đồ thị | PageRank hashtag; chỉnh θ, τ, λ trên ý tưởng đã làm và kết quả hit/miss. |
 
 ## Đo thế nào? {#do-luong}
@@ -54,6 +54,7 @@ Bốn phase, mỗi phase chỉ bắt đầu khi phase trước đo được: **P
 | Không thiết kế "tự public" trước OAuth Verification | App chưa xác minh bị khoá Private |
 | Quota YouTube: ~6 upload/ngày | Hẹn lịch bằng `publishAt`, không spam `videos.insert` |
 | Extractor Douyin/Bilibili gãy là bình thường | Ghim phiên bản yt-dlp, chỉ `-U` có kiểm soát |
+| Bilibili chỉ tìm kiếm, ẩn danh, không cookie | Repo công khai; Bilibili chặn 412 ngẫu nhiên nên lỗi chỉ cảnh báo, không làm hỏng run |
 | Không ghi token/cookie vào hàng Supabase | Chỉ `service_role` trên Actions; RLS chặn `anon` |
 
 - [ ] Trả lời các câu hỏi mở bên dưới trước Phase 1.

@@ -48,11 +48,13 @@ class VideoSource(Protocol):
         now: datetime,
         chart_enabled: bool = True,
         window_hours: int = 48,
+        bilibili_keywords: tuple[str, ...] = (),
     ) -> list[VideoSnapshot]:
-        """A1 chart per region (when enabled) + A2 keyword search over the window; de-duplicated."""
+        """A1 chart per region (when enabled) + A2 keyword search over the window, plus Bilibili search
+        for ``bilibili_keywords``; de-duplicated."""
 
     def fetch_channels(self, channel_ids: list[str], now: datetime) -> list[Channel]:
-        """A3 baselines for the channels the cache does not cover (``yt_UC…`` ids)."""
+        """A3 baselines for the channels the cache does not cover (``yt_UC…`` / ``bi_<mid>`` ids)."""
 
 
 class Embedder(Protocol):

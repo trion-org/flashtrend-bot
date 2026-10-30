@@ -1,0 +1,15 @@
+name: Bilibili check
+# Manual only: does Bilibili answer a GitHub runner? (It blocks data-centre IPs at random with HTTP 412.)
+on:
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TZ: Asia/Ho_Chi_Minh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python main.py check-bilibili

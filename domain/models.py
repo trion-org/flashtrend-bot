@@ -32,6 +32,7 @@ class AppConfig:
     llm_enabled: bool = True
     chart_enabled: bool = True  # A1 mostPopular chart; off for a niche so the cohort stays on topic
     search_window_hours: int = 48  # A2: only videos published within this window
+    bilibili_keywords: tuple[str, ...] = ()  # Chinese search terms for Bilibili; empty = Bilibili off
 
 
 @dataclass(frozen=True)

@@ -101,6 +101,7 @@ class SupabaseStore:
             llm_enabled=bool(r.get("llm_enabled", d.llm_enabled)),
             chart_enabled=bool(r.get("chart_enabled", d.chart_enabled)),
             search_window_hours=int(r.get("search_window_hours", d.search_window_hours)),
+            bilibili_keywords=tuple(r.get("bilibili_keywords") or ()),
         )
 
     # ------------------------------------------------------------------- runs

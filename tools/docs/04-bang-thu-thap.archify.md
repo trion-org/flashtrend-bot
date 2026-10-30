@@ -22,6 +22,7 @@ Job đọc bảng này **một lần ở đầu run** để lấy ngưỡng θ, 
 | `schema_version` | int | không | Phiên bản DDL bot kỳ vọng; lệch thì dừng ngay, không ghi rác | `1` |
 | `regions` | text[] | không | `regionCode` cho chart A1 (ISO 3166-1 alpha-2) | `{VN,JP}` |
 | `keywords` | text[] | không | Từ khoá cho `search.list` (A2); rỗng = chỉ dùng chart | `{python bot,ai tools,personal finance,street food,youtube shorts}` |
+| `bilibili_keywords` | text[], **đề xuất** | không | Từ khoá tiếng Trung cho tìm kiếm Bilibili; rỗng = tắt Bilibili | `{3D玄幻,修仙动画,AI漫剧}` |
 | `z_threshold` | float | không | θ: giữ candidate khi `z_score >= θ` | `1.5` |
 | `cosine_threshold` | float | không | τ: hai tiêu đề chung cụm khi cosine ≥ τ | `0.70` |
 | `history_cosine_threshold` | float | không | τ_hist: bỏ ý tưởng nếu giống lịch sử 90 ngày ≥ ngưỡng (C3) | `0.80` |
@@ -45,6 +46,23 @@ values (array['python bot', 'ai tools', 'personal finance', 'street food', 'yout
         array['VN', 'JP'], true);
 ```
 
+## Bilibili — tìm kiếm không cần đăng nhập {#bilibili}
+
+Bilibili không có API công khai cho việc này, nên adapter gọi đúng hai endpoint mà trang web gọi, **ẩn danh**: tìm kiếm (`search/type`, `order=click`, lọc theo `pubtime_begin_s` / `pubtime_end_s`) và thẻ kênh (`card`). Chỉ đọc metadata, không tải gì. Không dùng cookie: repo công khai, và cookie tài khoản cá nhân không thuộc về GitHub Actions; tải video chất lượng cao là việc của estfstudio.
+
+| Đo ngày 2026-10-31 | Kết quả |
+| --- | --- |
+| Tìm kiếm có cửa sổ thời gian | Trả tối đa 20 video mỗi trang, đúng trong cửa sổ, kèm `play`, `like`, `review` (bình luận), `duration`, `pubdate`, `pic` |
+| Từ khoá cho nhiều video | `修仙动画`, `国漫`, `AI漫剧`, `AI动画`, `3D国漫`, `3D玄幻` đều đủ 20 video / 7 ngày; `3D玄幻` có 15/20 video dài trên 1 giờ |
+| Lịch sử video của kênh (`space/wbi/arc/search`) | `-352` (kiểm soát rủi ro) với khách ẩn danh, kể cả có cookie `buvid`: không dùng được |
+| Thẻ kênh (`card`) | Trả `fans`, `archive_count`, tổng like; không có tổng view |
+| Chặn chống bot | HTTP 412 ngẫu nhiên: cùng URL lúc 200 lúc 412; 2/10 từ khoá thử bị chặn sau cả ba lần thử lại {caution:Không ổn định} |
+
+- **Baseline kênh = số người theo dõi.** Vì không có view trung bình của kênh, `channel_avg_views` của kênh Bilibili là `fans`, và `performance_ratio` thành *view trên người theo dõi*.
+- **Mỗi nền tảng một cohort.** Tỉ lệ của YouTube (view / view trung bình kênh) và của Bilibili (view / người theo dõi) khác thang đo, nên μ, σ, θ tính riêng từng nền tảng; điểm YouTube không đổi khi thêm Bilibili. Hàng `runs` ghi cohort của nền tảng lớn nhất; log liệt kê cả hai.
+- **Bilibili không bao giờ làm hỏng run.** Mỗi request thử lại sau 3, 8, 20 giây; từ khoá vẫn bị chặn thì bị bỏ qua và báo `warn`, các từ khoá khác và YouTube vẫn chạy. Giữa hai request có nghỉ 1 giây.
+- Mã nền tảng trong `id` là `bi_`: video `bi_BV1…`, kênh `bi_<mid>`.
+
 ## channels — baseline của kênh {#channels}
 
 Không có baseline kênh thì views tuyệt đối vô nghĩa: 100k views là bình thường với kênh nhạc, là đột biến với kênh 8k sub. Hàng được cache 24 giờ để tránh N+1 lần gọi `channels.list`.[](source:yt-channels)
@@ -57,7 +75,7 @@ Không có baseline kênh thì views tuyệt đối vô nghĩa: 100k views là b
 | `title` | text | không | Tên hiển thị; được copy sang `ideas.channel_title` | `Python Lab VN` |
 | `subscriber_count` | bigint | có | Bối cảnh kênh nhỏ/lớn; chưa vào công thức v1; YouTube có thể ẩn | `8200` |
 | `video_count` | int | có | Mẫu số khi ước `channel_avg_views = viewCount / videoCount` | `140` |
-| `channel_avg_views` | float | không | μ kênh trong `performance_ratio`; thiếu cột này Z-Score vô nghĩa | `5000.0` |
+| `channel_avg_views` | float | không | μ kênh trong `performance_ratio`; thiếu cột này Z-Score vô nghĩa. Kênh Bilibili: số người theo dõi | `5000.0` |
 | `fetched_at` | timestamptz | không | Lần gọi `channels.list` gần nhất | `2026-10-28T07:17:10+07:00` |
 | `stale_after` | timestamptz | không | `fetched_at + 24h`; chỉ gọi API lại khi `now() > stale_after` | `2026-10-29T07:17:10+07:00` |
 

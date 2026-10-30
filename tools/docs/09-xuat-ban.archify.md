@@ -103,3 +103,8 @@ Chi phí theo bảng quota của Google.[](source:yt-quota) Tham số theo tài 
 | Spam | Đăng dày cùng cấu trúc → giảm đề xuất, khoá upload | ≤ 1–2 video/ngày, cấu trúc khác nhau |
 | Hết quota | `quotaExceeded` khi upload | `publish_jobs.status = failed`, `error.code = YT_QUOTA`, thử lại hôm sau |
 | Refresh token bị thu hồi | `invalid_grant` | Lấy lại token (trang 08 · Cài đặt, mục OAuth) |
+
+## Phạm vi: thuộc repo nào? {#pham-vi}
+
+@callout level=warning title="Không nằm trong flashtrend-bot"
+Từ 2026-10-31 flashtrend-bot chỉ tìm từ khoá xu hướng (YouTube và Bilibili, trang 04). Lấy nguồn, lồng tiếng và đăng thuộc estfstudio; trang này giữ thiết kế tham khảo cho v2, không có mã trong repo này.
