@@ -62,17 +62,20 @@ Field từng bảng, mục đích và dữ liệu mẫu nằm ở trang 04 (bả
 | Host thay thế cùng schema | Neon hoặc Postgres bất kỳ có pgvector |
 | Vì sao không JSON trong git | L1 là thống kê cohort (`AVG`, `STDDEV`), L2 là cosine vector, B4 là chuỗi thời gian; JSON trong git gây conflict, lộ dữ liệu trên repo public và không truy vấn được |
 | ID video / kênh | `{platform}_{native_id}`: `yt_9bZkp7q19f0`, `bi_BV1xx411c7M2`, `yt_UC_pythonlab` |
-| ID run | `run_` + UTC `YYYYMMDDTHHMMSSZ`, ví dụ `run_20261028T001700Z` (sắp xếp được) |
-| ID cụm | `{run_id}_c{n}`, ví dụ `run_20261028T001700Z_c0` |
+| ID run | `run_` + giờ VN `YYYYMMDDTHHMMSS`, ví dụ `run_20261028T071700` (sắp xếp được) |
+| ID cụm | `{run_id}_c{n}`, ví dụ `run_20261028T071700_c0` |
 | Z-Score | Chỉ ở `candidates` (phụ thuộc cohort của run) |
 | Embedding | Bảng riêng `embeddings`, 1:1 với `videos` |
-| Thời gian | Mọi timestamp là UTC, kiểu `timestamptz` |
+| Thời gian | Chỉ dùng **giờ Việt Nam** (UTC+7, không có giờ mùa hè): kiểu `timestamptz`, bot ghi ISO-8601 kèm `+07:00`, database đặt `timezone = 'Asia/Ho_Chi_Minh'` |
 
 ## DDL đầy đủ của schema v1 {#ddl}
 
 Dán toàn bộ vào SQL Editor của Supabase rồi Run; sau đó chạy DDL `media` ở mục kế tiếp. Không tạo policy nào cho `anon` / `authenticated`: hai backend dùng `service_role` (bỏ qua RLS) từ phía server.
 
 ```sql title="Schema v1 — 7 enum, 10 bảng, index, RLS"
+-- Chỉ dùng giờ Việt Nam: SQL Editor và now() hiển thị +07
+alter database postgres set timezone to 'Asia/Ho_Chi_Minh';
+
 create extension if not exists vector;
 
 create type platform_t as enum (
@@ -328,9 +331,9 @@ alter table runs add column chart_media_id text references media (id);
 
 ```sql title="Digest estfstudio đọc: run ok mới nhất, top 10, kèm ảnh"
 select i.run_id, i.video_id, i.title, i.url, i.channel_title,
-       i.viral_score, i.llm, m.url as image_url
+       i.viral_score, i.llm, v.thumbnail_url as image_url
 from ideas i
-left join media m on m.video_id = i.video_id and m.kind = 'thumbnail' and m.alive
+join videos v on v.id = i.video_id
 where i.run_id = (select id from runs where status = 'ok' order by started_at desc limit 1)
 order by i.viral_score desc
 limit 10;
@@ -353,7 +356,7 @@ Quy tắc estfstudio phải theo (kế hoạch ở `docs/v1.1.0/01-ke-hoach-supa
 -- μ, σ của cohort cho Z-Score (L1)
 select avg(views / (channel_avg_views + 1e-5))         as mu_ratio,
        stddev_samp(views / (channel_avg_views + 1e-5)) as sigma_ratio
-from candidates where run_id = 'run_20261028T001700Z';
+from candidates where run_id = 'run_20261028T071700';
 
 -- B4: ba điểm gần nhất của một video
 select views, captured_at from snapshots
@@ -369,7 +372,7 @@ delete from estf_jobs  where expire_at < now();
 ## Thứ tự ghi trong một run {#thu-tu-ghi}
 
 @steps id=write-order
-| w1 | Mở run | `insert runs` với `status = running`, `id = run_<UTC>`. |
+| w1 | Mở run | `insert runs` với `status = running`, `id = run_<giờ VN>`. |
 | w2 | Kênh và video | Kênh hết hạn (`stale_after`) mới gọi API; upsert `videos`, insert `snapshots`. |
 | w3 | Chấm L1 | Insert `candidates` với Z, `viral_score`, `passed_z`. |
 | w4 | Embedding | Upsert `embeddings`, bỏ qua khi `text_hash` trùng. |

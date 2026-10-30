@@ -31,7 +31,7 @@ Khi đó ghi `cohort_n` thật vào `runs` và nới ngưỡng hoặc bỏ lọc
 
 ## Ví dụ: năm video trong cùng một run {#vi-du}
 
-Cohort `run_20261028T001700Z` có 5 video: μ = 18,7156 và σ = 16,2272 trên `performance_ratio`; median engagement thô m = 0,0938. Vì 5 < `min_cohort_n` = 20, θ được nới xuống 0.5.
+Cohort `run_20261028T071700` có 5 video: μ = 18,7156 và σ = 16,2272 trên `performance_ratio`; median engagement thô m = 0,0938. Vì 5 < `min_cohort_n` = 20, θ được nới xuống 0.5.
 
 | Video | Views / avg kênh | ratio | Z | engagement | decay | viral_score |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -53,11 +53,13 @@ B4 cần ít nhất 2 snapshot (vận tốc) hoặc 3 snapshot (gia tốc) của
 
 | Snapshot `yt_vid001` | captured_at | views | vận tốc v (views/giờ) | gia tốc a | EMA α = 0,3 |
 | --- | --- | --- | --- | --- | --- |
-| Lần 1 | 28/10 00:17 | 150.000 | — | — | 150.000 |
-| Lần 2 | 28/10 11:17 | 410.000 | 23.638 | — | 228.000 |
-| Lần 3 (minh hoạ) | 29/10 00:17 | 600.000 | 17.271 | −579 {caution:Chậm lại} | 339.600 |
+| Lần 1 | 28/10 07:17 | 150.000 | — | — | 150.000 |
+| Lần 2 | 28/10 18:17 | 410.000 | 23.638 | — | 228.000 |
+| Lần 3 (minh hoạ) | 29/10 07:17 | 600.000 | 14.615 | −694 {caution:Chậm lại} | 339.600 |
 
-v₂ = 260.000 / 11,0 h = 23.638; v₃ = 190.000 / 11,0 h = 17.271; a₃ = (17.271 − 23.638) / 11,0 = −579 views/giờ². `early_flag` chỉ bật khi v cao **và** a > 0, nên ở lần 3 vẫn `false`: video đã qua đỉnh tăng tốc. EMA: S₂ = 0,3·410.000 + 0,7·150.000 = 228.000; S₃ = 0,3·600.000 + 0,7·228.000 = 339.600.
+v₂ = 260.000 / 10,9994 h ≈ 23.638 (07:17:12 → 18:17:10); v₃ = 190.000 / 13,0 h ≈ 14.615 (18:17 → 07:17 hôm sau); a₃ = (14.615 − 23.638) / 13,0 ≈ −694 views/giờ². `early_flag` chỉ bật khi v cao **và** a > 0, nên ở lần 3 vẫn `false`: video đã qua đỉnh tăng tốc. EMA: S₂ = 0,3·410.000 + 0,7·150.000 = 228.000; S₃ = 0,3·600.000 + 0,7·228.000 = 339.600.
+
+"v cao" nghĩa là vận tốc từ median vận tốc của cohort trở lên (video chưa có snapshot trước không có vận tốc, nên không được cờ).
 
 Tuỳ chọn ở B6: nhân thêm `max(1, 1 + k·acceleration)` để thưởng video đang tăng tốc.
 

@@ -3,8 +3,8 @@
 Năm bảng giữ **dữ liệu thô và ngữ cảnh** của mỗi lần chạy: `app_config` (tham số thuật toán), `channels` (baseline kênh), `videos` (danh tính + số liệu mới nhất), `runs` (một job Actions) và `snapshots` (chuỗi thời gian views). Chúng được ghi trước khi tính bất kỳ điểm nào, nên chạy lại một run không làm mất lịch sử.
 
 - ID theo dạng `{platform}_{nativeId}` (`yt_vid001`, `bi_BV1xx411c7M2`): upsert idempotent giữa các run.[](source:idea)
-- Timestamp là `timestamptz`, mẫu ghi theo UTC ISO-8601.
-- Mẫu dùng xuyên suốt: run `run_20261028T001700Z` thu 5 video của 5 kênh; run thứ hai `run_20261028T111700Z` đo lại `yt_vid001` để có vận tốc.
+- Timestamp là `timestamptz`, mẫu ghi theo **giờ Việt Nam** (ISO-8601 kèm `+07:00`); database đặt múi giờ `Asia/Ho_Chi_Minh` nên SQL Editor cũng hiển thị giờ VN.
+- Mẫu dùng xuyên suốt: run `run_20261028T071700` thu 5 video của 5 kênh; run thứ hai `run_20261028T181700` đo lại `yt_vid001` để có vận tốc.
 
 @answer scope="Schema v1 (bản thiết kế) · mẫu dữ liệu dựng lại cho nhất quán · cột đánh dấu 'đề xuất' là bổ sung so với bản thiết kế gốc"
 @meta locale=vi
@@ -33,7 +33,7 @@ Job đọc bảng này **một lần ở đầu run** để lấy ngưỡng θ, 
 | `snapshot_ttl_days` | int | không | `expire_at = captured_at + N ngày` cho snapshots/candidates | `90` |
 | `llm_enabled` | boolean | không | `true` ở MVP; `false` chỉ khi debug L1/L2 không gọi Gemini | `true` |
 | `relaxed_z_threshold` | float, **đề xuất** | không | θ dùng khi `cohort_n < min_cohort_n` | `0.5` |
-| `updated_at` | timestamptz | không | Lần người sửa tham số (không phải mỗi job) | `2026-10-28T00:17:00Z` |
+| `updated_at` | timestamptz | không | Lần người sửa tham số (không phải mỗi job) | `2026-10-28T07:17:00+07:00` |
 
 ```sql title="Mẫu — seed app_config"
 insert into app_config (keywords, regions, llm_enabled)
@@ -54,8 +54,8 @@ Không có baseline kênh thì views tuyệt đối vô nghĩa: 100k views là b
 | `subscriber_count` | bigint | có | Bối cảnh kênh nhỏ/lớn; chưa vào công thức v1; YouTube có thể ẩn | `8200` |
 | `video_count` | int | có | Mẫu số khi ước `channel_avg_views = viewCount / videoCount` | `140` |
 | `channel_avg_views` | float | không | μ kênh trong `performance_ratio`; thiếu cột này Z-Score vô nghĩa | `5000.0` |
-| `fetched_at` | timestamptz | không | Lần gọi `channels.list` gần nhất | `2026-10-28T00:17:10Z` |
-| `stale_after` | timestamptz | không | `fetched_at + 24h`; chỉ gọi API lại khi `now() > stale_after` | `2026-10-29T00:17:10Z` |
+| `fetched_at` | timestamptz | không | Lần gọi `channels.list` gần nhất | `2026-10-28T07:17:10+07:00` |
+| `stale_after` | timestamptz | không | `fetched_at + 24h`; chỉ gọi API lại khi `now() > stale_after` | `2026-10-29T07:17:10+07:00` |
 
 | Hàng mẫu | title | subscriber_count | video_count | channel_avg_views |
 | --- | --- | --- | --- | --- |
@@ -77,25 +77,25 @@ Một hàng cho mỗi video từng gặp, ổn định giữa các run. Số li�
 | `url` | text | không | Link chuẩn để estfstudio mở hoặc lồng tiếng | `https://www.youtube.com/watch?v=vid001` |
 | `title` | text | không | Tiêu đề mới nhất; đầu vào embedding khi `source = title` | `Cách tạo Bot Python lấy dữ liệu TikTok tự động` |
 | `description` | text, mặc định `''` | không | Đầu vào Gemini và lọc từ khoá; cắt 500 ký tự (bản gốc để 2.000) | `Thu thập metadata TikTok bằng Python, không tải file.` |
-| `published_at` | timestamptz | không | Giờ đăng gốc → `age_hours` của candidate | `2026-10-27T19:00:00Z` |
+| `published_at` | timestamptz | không | Giờ đăng gốc → `age_hours` của candidate | `2026-10-28T02:00:00+07:00` |
 | `channel_id` | text FK → `channels.id` | không | Chủ sở hữu; join lấy baseline khi cần | `yt_UC_pythonlab` |
 | `duration_sec` | int | có | Phân biệt Shorts và video dài (F4) | `842` |
 | `thumbnail_url` | text | có | URL `i.ytimg.com` công khai; không cần upload | `https://i.ytimg.com/vi/vid001/hqdefault.jpg` |
 | `last_views` | bigint | không | Views lần đo gần nhất | `150000` |
 | `last_likes` | bigint | không | Likes lần đo gần nhất | `9200` |
 | `last_comments` | bigint | không | Comments lần đo gần nhất | `410` |
-| `first_seen_at` | timestamptz | không | Lần đầu bot gặp; không ghi đè khi upsert | `2026-10-28T00:17:12Z` |
-| `last_seen_at` | timestamptz | không | Lần thu gần nhất; dùng để dọn video mồ côi quá 90 ngày | `2026-10-28T00:17:12Z` |
-| `last_run_id` | text (tham chiếu logic → `runs.id`) | có | Run cập nhật số liệu lần cuối; cố ý không FK để tránh vòng khi insert | `run_20261028T001700Z` |
+| `first_seen_at` | timestamptz | không | Lần đầu bot gặp; không ghi đè khi upsert | `2026-10-28T07:17:12+07:00` |
+| `last_seen_at` | timestamptz | không | Lần thu gần nhất; dùng để dọn video mồ côi quá 90 ngày | `2026-10-28T07:17:12+07:00` |
+| `last_run_id` | text (tham chiếu logic → `runs.id`) | có | Run cập nhật số liệu lần cuối; cố ý không FK để tránh vòng khi insert | `run_20261028T071700` |
 | `transcript_excerpt` | text | có | Tối đa 12.000 ký tự phụ đề (A7, P1); null ở MVP | `null` |
 
 | Hàng mẫu | title | published_at | views / likes / comments | kênh |
 | --- | --- | --- | --- | --- |
-| `yt_vid001` | Cách tạo Bot Python lấy dữ liệu TikTok tự động | 27/10 19:00 | 150.000 / 9.200 / 410 | `yt_UC_pythonlab` |
-| `yt_vid002` | Hướng dẫn viết Bot Python cào video TikTok đơn giản | 27/10 15:30 | 120.000 / 6.800 / 350 | `yt_UC_codevn` |
-| `yt_vid003` | Vlog một ngày ăn uống tại Đà Nẵng | 26/10 12:00 | 8.000 / 310 / 25 | `yt_UC_foodtrip` |
-| `yt_vid004` | Bí quyết quản lý tài chính cho sinh viên năm 2026 | 27/10 08:00 | 95.000 / 6.100 / 380 | `yt_UC_fin20s` |
-| `yt_vid005` | Video ca nhạc hài hước triệu views | 26/10 18:17 | 2.000.000 / 85.000 / 4.200 | `yt_UC_bigmusic` |
+| `yt_vid001` | Cách tạo Bot Python lấy dữ liệu TikTok tự động | 28/10 02:00 | 150.000 / 9.200 / 410 | `yt_UC_pythonlab` |
+| `yt_vid002` | Hướng dẫn viết Bot Python cào video TikTok đơn giản | 27/10 22:30 | 120.000 / 6.800 / 350 | `yt_UC_codevn` |
+| `yt_vid003` | Vlog một ngày ăn uống tại Đà Nẵng | 26/10 19:00 | 8.000 / 310 / 25 | `yt_UC_foodtrip` |
+| `yt_vid004` | Bí quyết quản lý tài chính cho sinh viên năm 2026 | 27/10 15:00 | 95.000 / 6.100 / 380 | `yt_UC_fin20s` |
+| `yt_vid005` | Video ca nhạc hài hước triệu views | 27/10 01:17 | 2.000.000 / 85.000 / 4.200 | `yt_UC_bigmusic` |
 
 ## runs — một lần chạy của GitHub Actions {#runs}
 
@@ -103,13 +103,13 @@ Mỗi job tạo đúng một hàng. Xoá một run thì `candidates` và `ideas`
 
 | Field | Kiểu | Null | Mục đích | Mẫu |
 | --- | --- | --- | --- | --- |
-| `id` | text PK | không | `run_` + UTC `YYYYMMDDTHHMMSSZ`; sắp xếp được, trùng giờ cron | `run_20261028T001700Z` |
+| `id` | text PK | không | `run_` + giờ VN `YYYYMMDDTHHMMSS`; sắp xếp được, gần giờ cron 07:17 | `run_20261028T071700` |
 | `schema_version` | int | không | Schema lúc ghi | `1` |
 | `trigger` | `run_trigger_t` | không | `schedule` (cron) hay `workflow_dispatch` (chạy tay) | `schedule` |
 | `git_sha` | text | không | Commit của bot; chạy local ghi `local`; truy vết lỗi | `3f9c2ab` |
 | `region` | text | không | Region chính của lần chạy | `VN` |
-| `started_at` | timestamptz | không | Khoá của truy vấn "run mới nhất" | `2026-10-28T00:17:02Z` |
-| `finished_at` | timestamptz | có | Null khi đang `running` | `2026-10-28T00:18:41Z` |
+| `started_at` | timestamptz | không | Khoá của truy vấn "run mới nhất" | `2026-10-28T07:17:02+07:00` |
+| `finished_at` | timestamptz | có | Null khi đang `running` | `2026-10-28T07:18:41+07:00` |
 | `status` | `run_status_t` | không | `running` → `ok` / `error` | `ok` |
 | `error` | jsonb | có | Lỗi có cấu trúc: `code`, `message`, `details`, `trace_id` | `null` |
 | `collected` | int | không | Số video A1 + A2 thu được | `5` |
@@ -127,16 +127,16 @@ Mỗi job tạo đúng một hàng. Xoá một run thì `candidates` và `ideas`
 
 | Hàng mẫu | trigger | status | collected / outliers / ideas | error |
 | --- | --- | --- | --- | --- |
-| `run_20261028T001700Z` | schedule | ok | 5 / 3 / 2 | — |
-| `run_20261028T111700Z` | schedule | ok | 5 / 3 / 2 | — |
-| `run_20261029T001700Z` | workflow_dispatch | error | 0 / 0 / 0 | `YT_QUOTA` |
+| `run_20261028T071700` | schedule | ok | 5 / 3 / 2 | — |
+| `run_20261028T181700` | schedule | ok | 5 / 3 / 2 | — |
+| `run_20261029T071700` | workflow_dispatch | error | 0 / 0 / 0 | `YT_QUOTA` |
 
 ```json title="runs.error — mẫu khi hết quota YouTube"
 {
   "code": "YT_QUOTA",
   "message": "YouTube Data API quota exceeded",
   "details": {"reason": "quotaExceeded"},
-  "trace_id": "run_20261029T001700Z"
+  "trace_id": "run_20261029T071700"
 }
 ```
 
@@ -149,17 +149,17 @@ Khoá kép `(video_id, run_id)`: mỗi video tối đa một điểm mỗi run. 
 | Field | Kiểu | Null | Mục đích | Mẫu |
 | --- | --- | --- | --- | --- |
 | `video_id` | text PK, FK → `videos.id` | không | Video được đo | `yt_vid001` |
-| `run_id` | text PK, FK → `runs.id` | không | Lần đo | `run_20261028T001700Z` |
-| `captured_at` | timestamptz | không | Giờ đo; index `(video_id, captured_at desc)` | `2026-10-28T00:17:12Z` |
+| `run_id` | text PK, FK → `runs.id` | không | Lần đo | `run_20261028T071700` |
+| `captured_at` | timestamptz | không | Giờ đo; index `(video_id, captured_at desc)` | `2026-10-28T07:17:12+07:00` |
 | `views` | bigint | không | Views tại t; Δviews/Δt = vận tốc | `150000` |
 | `likes` | bigint | không | Likes tại t | `9200` |
 | `comments` | bigint | không | Comments tại t | `410` |
-| `expire_at` | timestamptz | không | `captured_at + snapshot_ttl_days`; cron xoá khi quá hạn | `2027-01-26T00:17:12Z` |
+| `expire_at` | timestamptz | không | `captured_at + snapshot_ttl_days`; cron xoá khi quá hạn | `2027-01-26T07:17:12+07:00` |
 
 | Hàng mẫu | run | captured_at | views | likes | comments |
 | --- | --- | --- | --- | --- | --- |
-| `yt_vid001` lần 1 | `run_20261028T001700Z` | 28/10 00:17:12 | 150.000 | 9.200 | 410 |
-| `yt_vid001` lần 2 | `run_20261028T111700Z` | 28/10 11:17:10 | 410.000 | 24.900 | 1.130 |
-| `yt_vid004` lần 1 | `run_20261028T001700Z` | 28/10 00:17:12 | 95.000 | 6.100 | 380 |
+| `yt_vid001` lần 1 | `run_20261028T071700` | 28/10 07:17:12 | 150.000 | 9.200 | 410 |
+| `yt_vid001` lần 2 | `run_20261028T181700` | 28/10 18:17:10 | 410.000 | 24.900 | 1.130 |
+| `yt_vid004` lần 1 | `run_20261028T071700` | 28/10 07:17:12 | 95.000 | 6.100 | 380 |
 
-Vận tốc của `yt_vid001` ở run thứ hai: (410.000 − 150.000) / 11,0 giờ = 23.638 views/giờ. Gia tốc cần điểm thứ ba nên còn null.
+Vận tốc của `yt_vid001` ở run thứ hai: (410.000 − 150.000) / 10,9994 giờ (07:17:12 → 18:17:10) ≈ 23.638 views/giờ. Gia tốc cần điểm thứ ba nên còn null.

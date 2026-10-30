@@ -75,7 +75,7 @@ Quy mô hàng trăm video/ngày trên một IP sẽ gặp CAPTCHA hoặc HTTP 40
 | `snippet.description` | Mô tả, hashtag, **ghi nguồn gốc** | Minh bạch nguồn |
 | `snippet.categoryId` | `22` People & Blogs, `27` Education… | Danh mục |
 | `status.privacyStatus` | `private` | Bắt buộc khi đặt `publishAt` |
-| `status.publishAt` | ISO 8601 UTC, ví dụ `2026-11-01T15:00:00Z` | YouTube tự công khai đúng giờ |
+| `status.publishAt` | ISO 8601 giờ VN kèm `+07:00`, ví dụ `2026-11-01T22:00:00+07:00` | YouTube tự công khai đúng giờ |
 | `status.selfDeclaredMadeForKids` | `false` (hoặc `true` nếu đúng) | COPPA; thiếu thì 400 Bad Request |
 | Kiểu upload | Resumable (SDK Python có sẵn) | Không dùng multipart thường cho tệp lớn |
 

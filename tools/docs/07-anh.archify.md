@@ -7,7 +7,7 @@
 - Endpoint là API nội bộ của một website, không phải dịch vụ ảnh có hợp đồng: phải coi là có thể hỏng bất cứ lúc nào.
 - estfstudio cũng upload ảnh bìa từng phần lên cùng host, theo đúng quy trình dưới đây (`owner = 'estfstudio'`, `kind = 'cover'`).
 
-@answer scope="Endpoint lấy từ lệnh upload mẫu (2026-10-28) · chưa kiểm định dạng phản hồi · thiết kế, chưa có mã"
+@answer scope="Endpoint lấy từ lệnh upload mẫu (2026-10-28) · chưa kiểm định dạng phản hồi · adapter đã viết, chưa gọi thử endpoint thật"
 @meta locale=vi
 @source cmd title="Lệnh upload ảnh mẫu (PowerShell, 2026-10-28)"
 @source pricing title="Supabase pricing — Free plan" url=https://supabase.com/pricing
@@ -47,7 +47,7 @@ curl.exe -X POST "https://nobinobi.vn/shop-service/api/v1/files/upload" `
 
 Đây là cú pháp PowerShell (`curl.exe`, dấu backtick cuối dòng để nối dòng), không phải cmd. Bản Python dự kiến cho adapter `infrastructure/image_host.py`:
 
-```python title="infrastructure/image_host.py (dự kiến)"
+```python title="Bản phác ban đầu (mã thật: infrastructure/image_host.py, tìm URL theo cấu trúc vì chưa biết tên trường)"
 import hashlib, requests
 
 UPLOAD_URL = "https://nobinobi.vn/shop-service/api/v1/files/upload"

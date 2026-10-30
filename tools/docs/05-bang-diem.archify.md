@@ -13,7 +13,7 @@ Bốn bảng giữ **kết quả tính toán**: `candidates` là điểm L1 củ
 
 ## Cohort mẫu được chấm thế nào? {#cohort}
 
-Cohort `run_20261028T001700Z`: μ = 18,7156 và σ = 16,2272 trên `performance_ratio`; median engagement thô m = 0,0938.
+Cohort `run_20261028T071700`: μ = 18,7156 và σ = 16,2272 trên `performance_ratio`; median engagement thô m = 0,0938.
 
 | Video | ratio | z_score | engagement | time_decay (tuổi) | viral_score | passed_z (θ = 0.5) |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -35,7 +35,7 @@ Khoá `(run_id, video_id)`, xoá theo run (`CASCADE`). Các cột `title`, `url`
 
 | Field | Kiểu | Null | Mục đích | Mẫu (`yt_vid001`) |
 | --- | --- | --- | --- | --- |
-| `run_id` | text PK, FK → `runs` | không | Cohort tính μ, σ | `run_20261028T001700Z` |
+| `run_id` | text PK, FK → `runs` | không | Cohort tính μ, σ | `run_20261028T071700` |
 | `video_id` | text PK, FK → `videos` | không | Video được chấm | `yt_vid001` |
 | `platform` | `platform_t` | không | Sao chép để lọc không cần join | `youtube` |
 | `title` | text | không | Tiêu đề lúc chấm | `Cách tạo Bot Python lấy dữ liệu TikTok tự động` |
@@ -56,9 +56,9 @@ Khoá `(run_id, video_id)`, xoá theo run (`CASCADE`). Các cột `title`, `url`
 | `viral_score` | float | không | `log1p(views) · engagement · ratio · decay` — khoá xếp hạng L1 | `27.493` |
 | `passed_z` | boolean | không | `z_score >= θ đang dùng`; chỉ outlier vào L2 | `true` |
 | `query_tag` | text | có | `chart` hoặc từ khoá A2 đã tìm ra video | `python bot` |
-| `expire_at` | timestamptz | không | Cùng TTL với snapshot | `2027-01-26T00:17:12Z` |
+| `expire_at` | timestamptz | không | Cùng TTL với snapshot | `2027-01-26T07:17:12+07:00` |
 
-Ở run `run_20261028T111700Z`, hàng của `yt_vid001` có `velocity = 23637.7` (xem bảng `snapshots`), `acceleration = null`, `early_flag = false`.
+Ở run `run_20261028T181700`, hàng của `yt_vid001` có `velocity = 23637.6` (xem bảng `snapshots`), `acceleration = null`, `early_flag = false`.
 
 ## ideas — leader cho estfstudio {#ideas}
 
@@ -66,12 +66,12 @@ Chỉ video thắng cụm mới được insert. `llm` bắt buộc khác null k
 
 | Field | Kiểu | Null | Mục đích | Mẫu `yt_vid001` | Mẫu `yt_vid004` |
 | --- | --- | --- | --- | --- | --- |
-| `run_id` | text PK, FK → `runs` | không | Digest của run nào | `run_20261028T001700Z` | cùng |
+| `run_id` | text PK, FK → `runs` | không | Digest của run nào | `run_20261028T071700` | cùng |
 | `video_id` | text PK, FK → `videos` | không | Leader (gộp `yt_vid002` vào `yt_vid001`) | `yt_vid001` | `yt_vid004` |
 | `platform` | `platform_t` | không | Sao chép | `youtube` | `youtube` |
 | `title` | text | không | Hiện trong digest | `Cách tạo Bot Python…` | `Bí quyết quản lý tài chính…` |
 | `url` | text | không | Nút xem nguồn / lồng tiếng | `…watch?v=vid001` | `…watch?v=vid004` |
-| `published_at` | timestamptz | không | Hiện tuổi video | `2026-10-27T19:00:00Z` | `2026-10-27T08:00:00Z` |
+| `published_at` | timestamptz | không | Hiện tuổi video | `2026-10-28T02:00:00+07:00` | `2026-10-27T15:00:00+07:00` |
 | `views` / `likes` / `comments` | bigint | không | Sao chép lúc chốt | 150.000 / 9.200 / 410 | 95.000 / 6.100 / 380 |
 | `channel_title` | text | không | Tên kênh, đọc không cần join `channels` | `Python Lab VN` | `Tài chính 20s` |
 | `channel_id` | text FK → `channels` | không | Truy kênh | `yt_UC_pythonlab` | `yt_UC_fin20s` |
@@ -83,10 +83,10 @@ Chỉ video thắng cụm mới được insert. `llm` bắt buộc khác null k
 | `viral_score` | float | không | `ORDER BY viral_score DESC` trong digest | `27.493` | `17.389` |
 | `duplicates_count` | int | không | Số video cùng cụm, không tính leader | `1` | `0` |
 | `novelty_score` | float | có | `1 − max cosine` với lịch sử 90 ngày (C3); 1.0 = chưa từng đề xuất | `1.0` | `1.0` |
-| `cluster_id` | text | không | `{run_id}_c{n}` để debug cụm | `run_20261028T001700Z_c0` | `…_c1` |
+| `cluster_id` | text | không | `{run_id}_c{n}` để debug cụm | `run_20261028T071700_c0` | `…_c1` |
 | `llm` | jsonb | có | Kết quả Gemini (bảng dưới) | xem bên dưới | xem bên dưới |
 | `status` | `idea_status_t` | không | `new` → `seen` / `used` / `rejected` (estfstudio ghi) | `used` | `seen` |
-| `created_at` | timestamptz | không | Lúc insert sau L2 | `2026-10-28T00:18:35Z` | cùng |
+| `created_at` | timestamptz | không | Lúc insert sau L2 | `2026-10-28T07:18:35+07:00` | cùng |
 
 | Khoá `llm` | Kiểu | Mục đích | Mẫu `yt_vid001` |
 | --- | --- | --- | --- |
@@ -120,7 +120,7 @@ Quan hệ 1:1 với `videos`. Chiếm nhiều dung lượng nhất (~3,5 KB/hàn
 | `text_hash` | text | không | sha256 của văn bản đã encode; trùng thì bỏ qua encode | `sha256:6f2c1a9e…a4b5c6` |
 | `source` | text, `title` hoặc `title+transcript` | không | Văn bản đầu vào: tiêu đề (MVP) hay kèm phụ đề (P1) | `title` |
 | `embedding` | `vector(384)` | không | Đầu vào HNSW `vector_cosine_ops`; `<=>` trả khoảng cách = 1 − similarity | `[0.0214, -0.0881, 0.0533, …]` |
-| `updated_at` | timestamptz | không | Lọc lịch sử 90 ngày cho C3 | `2026-10-28T00:18:20Z` |
+| `updated_at` | timestamptz | không | Lọc lịch sử 90 ngày cho C3 | `2026-10-28T07:18:20+07:00` |
 
 | Cosine (minh hoạ) | `yt_vid001` | `yt_vid002` | `yt_vid004` |
 | --- | --- | --- | --- |
@@ -159,10 +159,10 @@ Một nhãn cho mỗi idea (khoá trùng `ideas`). estfstudio ghi khi bạn bấ
 
 | Field | Kiểu | Null | Mục đích | Mẫu |
 | --- | --- | --- | --- | --- |
-| `run_id` | text PK, FK kép → `ideas` | không | Digest của ngày nào | `run_20261028T001700Z` |
+| `run_id` | text PK, FK kép → `ideas` | không | Digest của ngày nào | `run_20261028T071700` |
 | `video_id` | text PK, FK kép → `ideas` | không | Leader được gắn nhãn | `yt_vid001` |
 | `label` | `feedback_label_t` | không | `useful` / `not_useful` tính Precision@5; `duplicate`, `used` để kiểm tra | `useful` |
-| `labeled_at` | timestamptz | không | Mục tiêu: gắn nhãn trong 7 ngày | `2026-10-28T10:05:00Z` |
+| `labeled_at` | timestamptz | không | Mục tiêu: gắn nhãn trong 7 ngày | `2026-10-28T17:05:00+07:00` |
 | `note` | text | có | Góc sẽ làm hoặc lý do bỏ; không chứa dữ liệu cá nhân | Sẽ làm góc so sánh yt-dlp và API chính thức. |
 
 | Hàng mẫu | label | note |

@@ -7,7 +7,7 @@ Bốn secret là đủ cho MVP: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `YO
 - API key YouTube chỉ giới hạn theo API, không giới hạn IP: IP của GitHub Actions thay đổi liên tục.
 - Image host (trang 07) hiện không cần khoá; nếu sau này cần thì thêm secret `IMAGE_HOST_*`.
 
-@answer scope="Hướng dẫn cài đặt (2026-10-28) · cron tính theo UTC · chưa có main.py nên workflow sẽ fail tới Phase 1"
+@answer scope="Hướng dẫn cài đặt (2026-10-28) · giờ Việt Nam; cron của GitHub bắt buộc ghi UTC · workflow chạy `python main.py run`"
 @meta locale=vi
 @source setup title="Hướng dẫn cài đặt dịch vụ (2026-10-28) — Third-party setup"
 @source actions-cron title="GitHub Actions — schedule event" url=https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#schedule
@@ -32,7 +32,7 @@ Bốn secret là đủ cho MVP: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `YO
 
 @steps id=setup-steps
 | st-gh | GitHub repo public | Repo public để có phút Actions không giới hạn; đặt Spending limit = $0. |
-| st-sb | Supabase + schema | Project Free (Singapore hoặc Tokyo), chạy DDL lõi + bảng `media` (trang 03), seed `app_config`. |
+| st-sb | Supabase + schema | Project Free (Singapore), chạy DDL lõi + bảng `media` (trang 03), seed `app_config`. |
 | st-yt | YouTube API key | Bật YouTube Data API v3, tạo API key, Restrict key theo đúng API đó. |
 | st-gem | Gemini key | Tạo key ở Google AI Studio; model mặc định `gemini-2.5-flash` (xác nhận còn hỗ trợ khi code). |
 | st-sec | GitHub Secrets | Settings → Secrets and variables → Actions; dán không ngoặc kép, không khoảng trắng. |
@@ -85,12 +85,14 @@ Theo dõi quota: APIs & Services → Dashboard / Quotas. Free tier Gemini đủ 
 name: FlashTrend digest
 on:
   schedule:
-    - cron: "17 0 * * *"   # 00:17 UTC = 07:17 giờ VN
+    - cron: "17 0 * * *"   # GitHub chỉ nhận UTC: 00:17 UTC = 07:17 giờ VN
   workflow_dispatch:
 jobs:
   digest:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      TZ: Asia/Ho_Chi_Minh   # log và giờ trong bot đều theo giờ Việt Nam
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -110,20 +112,20 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 ```
 
-GitHub luôn đọc cron theo UTC.[](source:actions-cron) Phút lệch `17` tránh hàng chờ đầu giờ. Muốn chạy lần hai thì thêm `- cron: "17 11 * * *"` (11:17 UTC = 18:17 giờ VN = 20:17 giờ Nhật). Bản đầy đủ nên có thêm bước `python -m pip install --upgrade pip` và `restore-keys: ${{ runner.os }}-pip-` cho cache.
+GitHub luôn đọc cron theo UTC.[](source:actions-cron) Phút lệch `17` tránh hàng chờ đầu giờ. Muốn chạy lần hai thì thêm `- cron: "17 11 * * *"` (11:17 UTC = 18:17 giờ VN). Bản đầy đủ nên có thêm bước `python -m pip install --upgrade pip` và `restore-keys: ${{ runner.os }}-pip-` cho cache.
 
-| Muốn chạy lúc | Múi giờ | Giờ UTC | cron |
-| --- | --- | --- | --- |
-| 09:17 Nhật | UTC+9 | 00:17 | `17 0 * * *` |
-| 09:17 Việt Nam | UTC+7 | 02:17 | `17 2 * * *` |
-| 18:17 Nhật | UTC+9 | 09:17 | `17 9 * * *` |
+| Muốn chạy lúc (giờ VN) | Giờ UTC để ghi vào cron | cron |
+| --- | --- | --- |
+| 07:17 | 00:17 | `17 0 * * *` |
+| 09:17 | 02:17 | `17 2 * * *` |
+| 18:17 | 11:17 | `17 11 * * *` |
 
 Chạy thử: tab Actions → workflow **FlashTrend digest** → Run workflow. Log không được in `YOUTUBE_API_KEY`, `SERVICE_ROLE`, `GEMINI_API_KEY` (GitHub chỉ che khi trùng chuỗi chính xác). Nếu cài `torch` thì chỉ bản CPU: `pip install torch --index-url https://download.pytorch.org/whl/cpu`.
 
 ## Supabase: tạo project và chạy schema {#supabase}
 
 @steps id=sb-steps
-| sb1 | Tạo project | supabase.com → New project; tên `flashtrend-bot`; region Tokyo (máy ở Nhật) hoặc Singapore (mạng VN); gói Free; lưu mật khẩu DB vào trình quản lý mật khẩu. |
+| sb1 | Tạo project | supabase.com → New project; tên `flashtrend-bot`; region Singapore (gần Việt Nam nhất); gói Free; lưu mật khẩu DB vào trình quản lý mật khẩu. |
 | sb2 | Lấy URL và key | Project Settings → API: Project URL → `SUPABASE_URL`; `service_role` → Reveal → `SUPABASE_SERVICE_ROLE_KEY` (JWT bắt đầu `eyJ`). |
 | sb3 | Chạy DDL | SQL Editor → New query → dán DDL lõi + bảng `media` (trang 03 · Dữ liệu) → Run; `create extension if not exists vector` nằm đầu DDL. |
 | sb4 | Seed app_config | `insert into app_config (keywords, regions, llm_enabled) …`; chạy lần hai sẽ lỗi khoá chính, khi đó dùng `update … where id = 1`. |
@@ -175,6 +177,13 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ_your_service_role_here
 GEMINI_API_KEY=your-google-ai-studio-key
 ```
 
+```bash title="Chạy thử trên máy (đọc dữ liệu thật, không ghi, không gọi Gemini)"
+uv sync --extra dev --extra chart            # hoặc pip install -r requirements.txt
+python main.py run --dry-run --output-dir output
+python main.py run                           # ghi thật vào Supabase
+python main.py check-media                   # HEAD mọi link ảnh, đặt alive=false khi 404
+```
+
 ```bash title="Kiểm tra key Gemini (không commit)"
 curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY" | head
 ```
@@ -198,7 +207,7 @@ JSON liệt kê model nghĩa là key sống; `API_KEY_INVALID` là sai key hoặ
 | --- | --- |
 | `new row violates row-level security` | Đang dùng `anon`; đổi sang `service_role` |
 | `extension "vector" is not available` | Database → Extensions → bật `vector` |
-| YouTube `quotaExceeded` | Bớt `search.list` (100 unit/lần); quota reset theo giờ Pacific |
+| YouTube `quotaExceeded` | Bớt `search.list` (100 unit/lần); quota reset lúc nửa đêm giờ Pacific, tức 14:00–15:00 giờ VN |
 | Gemini 429 | Gửi ít ý tưởng hơn, thử lại có backoff |
 | `runs.status = error` nhưng có `candidates` | Gemini lỗi sau L2 — đúng thiết kế, estfstudio bỏ qua run đó |
 | Project Supabase bị pause | Wake trên dashboard; giữ cron ít nhất 1 lần/ngày |
@@ -219,4 +228,4 @@ JSON liệt kê model nghĩa là key sống; `API_KEY_INVALID` là sai key hoặ
 - [ ] Bốn secret MVP đã gắn; không có `TELEGRAM_*` trên repo này.
 - [ ] estfstudio (ngoài repo) có cùng `SUPABASE_URL` + `service_role` trong `.secrets/secrets.yml`, và đã chạy migration `estf_*`.
 - [ ] `.env` có trong `.gitignore`; không secret nào trong tệp được track.
-- [ ] `workflow_dispatch` chạy được (fail trước khi có `main.py` ở Phase 1 là bình thường).
+- [ ] `workflow_dispatch` chạy được: lần đầu nên bật `dry_run` (đọc thật, không ghi, không gọi Gemini).

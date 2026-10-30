@@ -19,18 +19,18 @@ Một idea có thể có nhiều job (thử lại). Không lưu token OAuth tron
 | Field | Kiểu | Null | Mục đích | Mẫu |
 | --- | --- | --- | --- | --- |
 | `id` | text PK | không | `job_{ngày}_{video_id}` hoặc uuid | `job_20261029_vid001` |
-| `run_id` | text, FK kép → `ideas` | không | Idea nguồn | `run_20261028T001700Z` |
+| `run_id` | text, FK kép → `ideas` | không | Idea nguồn | `run_20261028T071700` |
 | `video_id` | text, FK kép → `ideas` | không | Leader được làm thành nội dung mới | `yt_vid001` |
 | `status` | `publish_status_t` | không | `queued` → `uploaded` / `scheduled` / `failed` | `scheduled` |
 | `youtube_video_id` | text | có | ID video trên **kênh của bạn** sau `videos.insert` | `Ab3dEf9GhIj` |
-| `publish_at` | timestamptz | có | `status.publishAt` (UTC): upload sớm, YouTube tự công khai | `2026-10-30T08:00:00Z` |
+| `publish_at` | timestamptz | có | `status.publishAt` (ghi `+07:00`): upload sớm, YouTube tự công khai | `2026-10-30T15:00:00+07:00` |
 | `privacy_status` | `privacy_t` | không | App chưa xác minh thì giữ `private` | `private` |
 | `made_for_kids` | boolean | không | `selfDeclaredMadeForKids` bắt buộc (COPPA); thiếu thì API trả 400 | `false` |
 | `error` | jsonb | có | Lỗi upload (quota ~1.600 unit, OAuth…) | `null` |
 
 | Hàng mẫu | status | youtube_video_id | publish_at | error |
 | --- | --- | --- | --- | --- |
-| `job_20261029_vid001` | scheduled | `Ab3dEf9GhIj` | 30/10 08:00 UTC | — |
+| `job_20261029_vid001` | scheduled | `Ab3dEf9GhIj` | 30/10 15:00 | — |
 | `job_20261029_vid004` | failed | — | — | `{"code":"YT_QUOTA"}` |
 
 ## media — link ảnh trên image host {#media}
@@ -48,16 +48,16 @@ Mỗi tệp ảnh có đúng một hàng: `sha256` unique nên upload lại cùn
 | `bytes` | int, `check (bytes <= 2000000)` | không | Giới hạn 2 MB mỗi ảnh | `48213` |
 | `width` / `height` | int | có | Kích thước ảnh | `1200` / `630` |
 | `video_id` | text FK → `videos.id` | có | Ảnh thuộc video nào (thumbnail, cover) | `null` |
-| `run_id` | text FK → `runs.id`, `on delete set null` | có | Ảnh thuộc run nào (chart) | `run_20261028T001700Z` |
+| `run_id` | text FK → `runs.id`, `on delete set null` | có | Ảnh thuộc run nào (chart) | `run_20261028T071700` |
 | `alive` | boolean, mặc định true | không | `false` khi `HEAD url` trả 404 | `true` |
-| `checked_at` | timestamptz | có | Lần kiểm link gần nhất (cron hằng tuần) | `2026-11-04T00:20:00Z` |
-| `created_at` | timestamptz | không | Lúc ghi | `2026-10-28T00:18:38Z` |
+| `checked_at` | timestamptz | có | Lần kiểm link gần nhất (cron hằng tuần) | `2026-11-04T07:20:00+07:00` |
+| `created_at` | timestamptz | không | Lúc ghi | `2026-10-28T07:18:38+07:00` |
 
 Cron `HEAD url` hằng tuần của FlashTrend kiểm mọi hàng, kể cả `owner = 'estfstudio'`; 404 chỉ đặt `alive = false`, không xoá hàng. Phía estfstudio coi ảnh `alive = false` như chưa có ảnh bìa.
 
 | Hàng mẫu | owner | kind | gắn với | bytes |
 | --- | --- | --- | --- | --- |
-| `img_4be1c07d9a2f5e31` | flashtrend | chart | `run_20261028T001700Z` | 48.213 |
+| `img_4be1c07d9a2f5e31` | flashtrend | chart | `run_20261028T071700` | 48.213 |
 | `img_9a1f0e22c4d7b860` | estfstudio | cover | bài `estf_posts` id 1 | 182.554 |
 
 ## estf_posts — sổ bài estfstudio đã đăng {#estf-posts}
@@ -72,14 +72,14 @@ Một hàng cho mỗi tệp đã đăng lên Facebook hoặc Drive. Nếu bài s
 | `permalink` | text | có | `permalink_url` của Facebook / `webViewLink` của Drive | `https://www.facebook.com/…/videos/1234567890123456` |
 | `title` | text, tối đa 200 ký tự | không | Tiêu đề bài | Bot Python lấy dữ liệu TikTok — Phần 1/3 |
 | `source_url` | text | có | Link video gốc đã lồng tiếng | `https://www.youtube.com/watch?v=vid001` |
-| `idea_run_id` / `idea_video_id` | text, FK kép → `ideas`, `on delete set null` | có | Idea đã sinh ra bài này | `run_20261028T001700Z` / `yt_vid001` |
+| `idea_run_id` / `idea_video_id` | text, FK kép → `ideas`, `on delete set null` | có | Idea đã sinh ra bài này | `run_20261028T071700` / `yt_vid001` |
 | `part_no` / `part_total` | smallint | có | Phần N/M khi đăng chia phần | `1` / `3` |
 | `duration_sec` | int | có | Thời lượng tệp đã đăng | `598` |
 | `cover_media_id` | text FK → `media.id` | có | Ảnh bìa của phần này | `img_9a1f0e22c4d7b860` |
 | `status` | `estf_post_status_t` | không | `scheduled`, `published`, `failed`, `deleted` | `scheduled` |
-| `scheduled_at` | timestamptz | có | Giờ đăng theo lịch của Facebook | `2026-10-28T13:00:00Z` |
+| `scheduled_at` | timestamptz | có | Giờ đăng theo lịch của Facebook | `2026-10-28T20:00:00+07:00` |
 | `published_at` | timestamptz | có | Giờ thực sự công khai | `null` |
-| `created_at` | timestamptz | không | Lúc ghi sổ | `2026-10-28T11:42:10Z` |
+| `created_at` | timestamptz | không | Lúc ghi sổ | `2026-10-28T18:42:10+07:00` |
 
 | Hàng mẫu | platform | external_id | phần | status |
 | --- | --- | --- | --- | --- |
@@ -93,15 +93,15 @@ Chỉ trạng thái và mã lỗi, không có log; tự xoá sau 90 ngày. Log �
 
 | Field | Kiểu | Null | Mục đích | Mẫu |
 | --- | --- | --- | --- | --- |
-| `id` | text PK | không | `job_` + UTC stamp | `job_20261028T113001Z` |
+| `id` | text PK | không | `job_` + giờ VN `YYYYMMDDTHHMMSS` | `job_20261028T183001` |
 | `kind` | text | không | Lệnh bot: `all`, `gen`, `fetch`, `translate`, `fb` | `all` |
 | `source_url` | text | có | Link đầu vào | `https://www.youtube.com/watch?v=vid001` |
 | `status` | text: `running` / `ok` / `error` | không | Trạng thái | `ok` |
 | `error_code` | text | có | Tên lớp lỗi, không kèm thông điệp có dữ liệu cá nhân | `null` |
 | `gpu` | text: `kaggle` / `local` / `none` | có | Job có dùng GPU mượn không | `kaggle` |
-| `started_at` | timestamptz | không | Bắt đầu | `2026-10-28T11:30:01Z` |
-| `finished_at` | timestamptz | có | Kết thúc | `2026-10-28T11:41:55Z` |
-| `expire_at` | timestamptz | không | `started_at + 90 ngày` | `2027-01-26T11:30:01Z` |
+| `started_at` | timestamptz | không | Bắt đầu | `2026-10-28T18:30:01+07:00` |
+| `finished_at` | timestamptz | có | Kết thúc | `2026-10-28T18:41:55+07:00` |
+| `expire_at` | timestamptz | không | `started_at + 90 ngày` | `2027-01-26T18:30:01+07:00` |
 
 ## Mọi kiểu enum {#enum}
 

@@ -81,5 +81,5 @@ Bốn phase, mỗi phase chỉ bắt đầu khi phase trước đo được: **P
 | estfstudio đã trỏ cùng project Supabase chưa? | Chưa có mã; dùng chung một project, estfstudio làm theo sáu mốc m1–m6 |
 | Đã có kênh YouTube + test user OAuth chưa, hay chỉ báo cáo? | Chỉ báo cáo, không upload |
 | Có nguồn được phép dùng ở v2 (kênh mình, CC, hợp đồng)? | Chưa; v2 chưa bắt đầu |
-| Đã có project Supabase chưa, region nào (Singapore / Tokyo)? | Tạo mới ở region gần |
+| Đã có project Supabase chưa, region nào (Singapore)? | Tạo mới ở region gần |
 | Model Gemini? | `gemini-2.5-flash`, xác nhận trên AI Studio khi code |

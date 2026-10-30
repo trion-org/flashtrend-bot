@@ -5,9 +5,9 @@ FlashTrend là **bộ lọc thống kê–ngữ nghĩa** chạy 1–2 lần/ngà
 - Không reup, không tải video ở MVP: chỉ đọc metadata qua API chính thức.[](source:idea)
 - Supabase là nguồn sự thật duy nhất; JSON/PNG trên Actions chỉ để debug.[](source:idea)
 - Repo này không có Telegram: bot của estfstudio đọc thẳng cùng project Supabase.
-- Ảnh (thumbnail, biểu đồ) được upload qua một image host bên thứ ba; Supabase chỉ giữ link.
+- Ảnh tự tạo (biểu đồ run, ảnh bìa) được upload qua một image host bên thứ ba; Supabase chỉ giữ link. Thumbnail YouTube dùng thẳng link `i.ytimg.com`, không upload.
 
-@answer scope="Thiết kế MVP, 2026-10-28 · chưa có mã nguồn · số liệu quota là giới hạn công bố"
+@answer scope="Thiết kế MVP, 2026-10-28 · Phase 1 đã có mã (2026-10-31), chưa chạy với khoá YouTube/Gemini thật · số liệu quota là giới hạn công bố"
 @meta locale=vi
 @source idea title="Bản thiết kế FlashTrend (2026-10-28) — Scientific Idea Catalog"
 @source setup title="Hướng dẫn cài đặt dịch vụ (2026-10-28) — Third-party setup"
@@ -37,7 +37,7 @@ Câu hỏi nghiên cứu: kết hợp API chính thức, trình trích metadata,
 | LLM | Gemini API bắt buộc (key Google AI Studio) |
 | Ngôn ngữ | Python 3.10+ |
 | Không làm ở MVP | Telegram trong repo này, reup nguyên bản, cào hàng loạt, LLM chạy local, GPU |
-| Trạng thái | Đã khoá ý tưởng (2026-10-28), chưa có mã |
+| Trạng thái | Đã khoá ý tưởng (2026-10-28); Phase 1 đã có mã và test (2026-10-31), chưa chạy thật với khoá dịch vụ |
 
 ## Những thành phần nào nói chuyện với nhau? {#thanh-phan span=12}
 
@@ -57,10 +57,10 @@ GitHub Actions là nơi duy nhất gọi API bên ngoài. estfstudio chỉ đọ
 | estf > db | đọc digest |
 
 @steps id=he-thong-steps
-| s-cron | GitHub Actions cron | Chạy `17 0 * * *` (00:17 UTC = 07:17 giờ VN = 09:17 giờ Nhật), có `workflow_dispatch` để chạy tay; timeout 10 phút. | he-thong | cron |
+| s-cron | GitHub Actions cron | Chạy lúc **07:17 giờ Việt Nam** hằng ngày (cron `17 0 * * *`: GitHub chỉ nhận cron theo UTC, 00:17 UTC = 07:17 giờ VN), có `workflow_dispatch` để chạy tay; timeout 10 phút. | he-thong | cron |
 | s-yt | YouTube Data API | Chart `mostPopular` theo region + `search.list` theo từ khoá + baseline kênh. Chỉ cần API key. | he-thong | yt |
 | s-gem | Gemini API | Chỉ đọc 3–5 ý tưởng đã lọc; trả JSON `summary`, `hook`, `angles[3]`, `risk`. | he-thong | gem |
-| s-img | Image host | Upload thumbnail / biểu đồ, nhận URL công khai, ghi vào bảng `media`. | he-thong | img |
+| s-img | Image host | Upload biểu đồ của run, nhận URL công khai, ghi vào bảng `media`. | he-thong | img |
 | s-db | Supabase Postgres | Postgres + pgvector, gói Free; RLS bật, không có policy cho `anon`. | he-thong | db |
 | s-estf | estfstudio bot | Đọc run `ok` mới nhất, gửi Telegram, ghi `ideas.status` và `feedback`. | he-thong | estf |
 
@@ -118,14 +118,17 @@ Chi phí quota YouTube theo bảng của Google.[](source:yt-quota) Ngân sách 
 
 ## Mã nguồn sẽ chia thế nào? {#kien-truc}
 
-```text title="Cấu trúc thư mục dự kiến (clean slices)"
+```text title="Cấu trúc thư mục (clean slices, đã có mã)"
 flashtrend-bot/
-  domain/          # VideoSnapshot, Idea, ViralScore (entity, không I/O)
-  application/     # score, z_filter, dedup, rank
-  infrastructure/  # youtube_api, ytdlp, supabase, gemini, image_host
-  presentation/    # cli / điểm vào cho Actions (main.py)
+  domain/          # models, scoring (Z, engagement, decay, vận tốc), dedup (cosine), llm_contract, clock (giờ VN)
+  application/     # digest (RunDigest: 7 bước ghi), check_media, ports
+  infrastructure/  # youtube_api, supabase_store, gemini, embedder, image_host, chart, settings
+  presentation/    # cli, log, output (điểm vào cho Actions: main.py)
+  composition_root.py   # nơi duy nhất nối adapter vào use case
+  sql/             # 01_core · 02_media · 03_functions · 04_seed_app_config
+  tests/           # unit + architecture + integration (PostgREST thật)
   output/          # bản xuất json + png tuỳ chọn (không phải nguồn sự thật)
-  .github/workflows/flashtrend.yml
+  .github/workflows/  # flashtrend.yml · media-check.yml · ci.yml
   .env.example
 ```
 
