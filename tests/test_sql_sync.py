@@ -21,6 +21,18 @@ class SqlSyncTest(unittest.TestCase):
         self.assertIn(proposed, (ROOT / "sql/01_core.sql").read_text(encoding="utf-8"))
         self.assertIn(media, (ROOT / "sql/02_media.sql").read_text(encoding="utf-8"))
 
+    def test_migration_adds_exactly_the_columns_a_fresh_install_has(self):
+        core = (ROOT / "sql/01_core.sql").read_text(encoding="utf-8")
+        migration = (ROOT / "sql/05_search_tuning.sql").read_text(encoding="utf-8")
+        for column in ("chart_enabled", "search_window_hours"):
+            self.assertIn(f"add column {column}", core)
+            self.assertIn(f"add column if not exists {column}", migration)
+
+    def test_seed_sets_every_niche_knob(self):
+        seed = (ROOT / "sql/04_seed_app_config.sql").read_text(encoding="utf-8")
+        for field in ("keywords", "chart_enabled", "search_window_hours", "decay_lambda"):
+            self.assertRegex(seed, rf"{field} = excluded\.{field}")
+
     def test_database_is_set_to_vietnam_time(self):
         sql = (ROOT / "sql/01_core.sql").read_text(encoding="utf-8")
         self.assertIn("set timezone to 'Asia/Ho_Chi_Minh'", sql)

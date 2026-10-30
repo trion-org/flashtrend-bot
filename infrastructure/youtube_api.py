@@ -75,12 +75,10 @@ class YouTubeSource:
         client,
         chart_max: int = 50,
         search_max: int = 25,
-        search_window_hours: int = 48,
     ) -> None:
         self._yt = client
         self._chart_max = chart_max
         self._search_max = search_max
-        self._window = timedelta(hours=search_window_hours)
 
     @classmethod
     def from_api_key(cls, api_key: str, **kwargs) -> YouTubeSource:
@@ -91,15 +89,21 @@ class YouTubeSource:
     # ------------------------------------------------------------- VideoSource
 
     def collect(
-        self, regions: tuple[str, ...], keywords: tuple[str, ...], now: datetime
+        self,
+        regions: tuple[str, ...],
+        keywords: tuple[str, ...],
+        now: datetime,
+        chart_enabled: bool = True,
+        window_hours: int = 48,
     ) -> list[VideoSnapshot]:
         found: dict[str, VideoSnapshot] = {}
-        for region in regions:
-            for video in self._chart(region, now):
-                found.setdefault(video.id, video)
+        if chart_enabled:
+            for region in regions:
+                for video in self._chart(region, now):
+                    found.setdefault(video.id, video)
         search_region = regions[0] if regions else None
         for keyword in keywords:
-            ids = self._search(keyword, search_region, now)
+            ids = self._search(keyword, search_region, now, timedelta(hours=window_hours))
             for video in self._videos(ids, now, tag=keyword):
                 found.setdefault(video.id, video)
         return list(found.values())
@@ -146,13 +150,15 @@ class YouTubeSource:
         )
         return [v for v in (self._parse(i, now, "chart") for i in resp.get("items", [])) if v]
 
-    def _search(self, keyword: str, region: str | None, now: datetime) -> list[str]:
+    def _search(
+        self, keyword: str, region: str | None, now: datetime, window: timedelta
+    ) -> list[str]:
         params = {
             "part": "id",
             "q": keyword,
             "type": "video",
             "order": "viewCount",
-            "publishedAfter": iso(now - self._window),
+            "publishedAfter": iso(now - window),
             "maxResults": self._search_max,
         }
         if region:

@@ -86,7 +86,8 @@ class FakeSource:
         self.error = error
         self.fetched: list[list[str]] = []
 
-    def collect(self, regions, keywords, now):
+    def collect(self, regions, keywords, now, chart_enabled=True, window_hours=48):
+        self.collect_args = (regions, keywords, chart_enabled, window_hours)
         if self.error:
             raise self.error
         return list(self.videos)

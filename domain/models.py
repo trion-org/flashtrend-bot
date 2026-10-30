@@ -30,6 +30,8 @@ class AppConfig:
     min_cohort_n: int = 20
     snapshot_ttl_days: int = 90
     llm_enabled: bool = True
+    chart_enabled: bool = True  # A1 mostPopular chart; off for a niche so the cohort stays on topic
+    search_window_hours: int = 48  # A2: only videos published within this window
 
 
 @dataclass(frozen=True)

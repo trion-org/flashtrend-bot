@@ -209,6 +209,9 @@ alter table embeddings enable row level security;
 alter table feedback enable row level security;
 alter table publish_jobs enable row level security;
 
--- Columns proposed on docs page 04 (relaxed threshold for small cohorts)
+-- Columns proposed on docs page 04 (relaxed threshold, niche feed knobs)
 alter table app_config add column relaxed_z_threshold double precision not null default 0.5;
 alter table runs add column z_threshold_used double precision;
+alter table app_config add column chart_enabled boolean not null default true;
+alter table app_config add column search_window_hours int not null default 48
+  check (search_window_hours between 1 and 720);

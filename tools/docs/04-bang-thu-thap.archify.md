@@ -33,7 +33,11 @@ Job đọc bảng này **một lần ở đầu run** để lấy ngưỡng θ, 
 | `snapshot_ttl_days` | int | không | `expire_at = captured_at + N ngày` cho snapshots/candidates | `90` |
 | `llm_enabled` | boolean | không | `true` ở MVP; `false` chỉ khi debug L1/L2 không gọi Gemini | `true` |
 | `relaxed_z_threshold` | float, **đề xuất** | không | θ dùng khi `cohort_n < min_cohort_n` | `0.5` |
+| `chart_enabled` | boolean, **đề xuất** | không | `false` = bỏ chart `mostPopular` chung để cohort chỉ gồm video trong ngách | `false` |
+| `search_window_hours` | int, **đề xuất** | không | A2 chỉ lấy video đăng trong N giờ gần nhất (1–720); ngách ít upload cần nhiều ngày | `168` |
 | `updated_at` | timestamptz | không | Lần người sửa tham số (không phải mỗi job) | `2026-10-28T07:17:00+07:00` |
+
+Ví dụ ngách hoạt hình Trung Quốc (đo trên kết quả YouTube thật, 2026-10-31): từ khoá ngắn và rộng như `国漫`, `修仙动画`, `AI漫剧` cho khoảng 25 video mỗi lần; cụm ghép `全集` / `合集` hoặc `国创 3D` trả về 0 vì YouTube coi là AND; cửa sổ 48 giờ để trống phần lớn từ khoá nên seed đặt `search_window_hours = 168`, `chart_enabled = false` và `decay_lambda = 0.01` (nửa đời ≈ 69 giờ, vì λ = 0.05 sẽ đưa điểm mọi video 6 ngày tuổi về gần 0). Bản đầy đủ nằm ở `sql/04_seed_app_config.sql`.
 
 ```sql title="Mẫu — seed app_config"
 insert into app_config (keywords, regions, llm_enabled)

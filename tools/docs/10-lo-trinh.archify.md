@@ -76,7 +76,7 @@ Bốn phase, mỗi phase chỉ bắt đầu khi phase trước đo được: **P
 
 | Câu hỏi | Mặc định nếu chưa trả lời |
 | --- | --- |
-| Ngách nội dung cụ thể (1–3 từ khoá gốc)? | mostPopular `VN` + 5 từ khoá chung |
+| Ngách nội dung cụ thể (1–3 từ khoá gốc)? | Đã chọn (2026-10-31): hoạt hình 3D / AI Trung Quốc, 8 từ khoá tiếng Trung và tiếng Anh trong `sql/04_seed_app_config.sql`, tắt chart chung |
 | Ngôn ngữ đầu ra (vi / ja / en)? | vi |
 | estfstudio đã trỏ cùng project Supabase chưa? | Chưa có mã; dùng chung một project, estfstudio làm theo sáu mốc m1–m6 |
 | Đã có kênh YouTube + test user OAuth chưa, hay chỉ báo cáo? | Chỉ báo cáo, không upload |

@@ -275,6 +275,18 @@ class YouTubeSourceTest(unittest.TestCase):
         self.assertEqual(kw["publishedAfter"], "2026-10-26T07:17:12+07:00")
         self.assertEqual(kw["regionCode"], "VN")
 
+    def test_chart_can_be_switched_off_for_a_niche(self):
+        fake = FakeYT(items={"chart": [yt_item("a")], "search": [yt_item("c")]}, search_ids=["c"])
+        vids = YouTubeSource(fake).collect(("VN",), ("k",), NOW, chart_enabled=False)
+        self.assertEqual([v.native_id for v in vids], ["c"])
+        self.assertFalse(any("chart" in kw for _, kw in fake.calls))  # no mostPopular call at all
+
+    def test_search_window_comes_from_the_config(self):
+        fake = FakeYT(items={"search": []}, search_ids=[])
+        YouTubeSource(fake).collect(("VN",), ("k",), NOW, chart_enabled=False, window_hours=168)
+        kw = next(kw for k, kw in fake.calls if k == "search")
+        self.assertEqual(kw["publishedAfter"], "2026-10-21T07:17:12+07:00")  # 7 days back
+
     def test_quota_error_is_structured(self):
         fake = FakeYT(fail=http_error(403, "quotaExceeded"))
         with self.assertRaises(FlashTrendError) as cm:

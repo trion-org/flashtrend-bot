@@ -226,6 +226,19 @@ class HistoryTest(unittest.TestCase):
         self.assertEqual(embedder.calls, [])  # every title hash already stored
 
 
+class SearchConfigTest(unittest.TestCase):
+    def test_chart_flag_and_window_reach_the_source(self):
+        store = FakeStore(AppConfig(keywords=("国漫",), chart_enabled=False, search_window_hours=168))
+        source = FakeSource()
+        make(store=store, source=source)[0].run()
+        self.assertEqual(source.collect_args, (("VN",), ("国漫",), False, 168))
+
+    def test_defaults_keep_the_original_behaviour(self):
+        source = FakeSource()
+        make(source=source)[0].run()
+        self.assertEqual(source.collect_args[2:], (True, 48))
+
+
 class BaselineTest(unittest.TestCase):
     def test_fresh_cached_channels_are_not_refetched(self):
         store = FakeStore()

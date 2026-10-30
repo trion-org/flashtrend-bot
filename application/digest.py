@@ -170,7 +170,9 @@ class RunDigest:
         self._db_bytes = db_bytes
 
         # w2 — collect, channel baselines, videos, snapshots
-        videos = self._source.collect(config.regions, config.keywords, now)
+        videos = self._source.collect(
+            config.regions, config.keywords, now, config.chart_enabled, config.search_window_hours
+        )
         stats.collected = len(videos)
         channels = self._baselines(videos, now)
         scorable = [v for v in videos if channels.get(v.channel_id, None) and

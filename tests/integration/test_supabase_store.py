@@ -49,9 +49,10 @@ class SupabaseStoreIntegrationTest(unittest.TestCase):
         c = self.store.get_app_config()
         self.assertEqual((c.schema_version, c.z_threshold, c.relaxed_z_threshold, c.min_cohort_n),
                          (1, 1.5, 0.5, 20))
-        self.assertIn("国漫 3D动画 全集", c.keywords)  # Chinese keywords survive the DB round trip
+        self.assertIn("国漫", c.keywords)  # Chinese keywords survive the DB round trip
         self.assertIn("Chinese AI animation", c.keywords)
         self.assertEqual((len(c.keywords), c.regions), (8, ("VN",)))
+        self.assertEqual((c.chart_enabled, c.search_window_hours, c.decay_lambda), (False, 168, 0.01))
 
     def test_02_full_run_writes_everything_the_docs_promise(self):
         r = self.run_digest()

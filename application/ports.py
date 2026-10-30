@@ -42,9 +42,14 @@ class ChartImage:
 
 class VideoSource(Protocol):
     def collect(
-        self, regions: tuple[str, ...], keywords: tuple[str, ...], now: datetime
+        self,
+        regions: tuple[str, ...],
+        keywords: tuple[str, ...],
+        now: datetime,
+        chart_enabled: bool = True,
+        window_hours: int = 48,
     ) -> list[VideoSnapshot]:
-        """A1 chart per region + A2 keyword search; de-duplicated by video id."""
+        """A1 chart per region (when enabled) + A2 keyword search over the window; de-duplicated."""
 
     def fetch_channels(self, channel_ids: list[str], now: datetime) -> list[Channel]:
         """A3 baselines for the channels the cache does not cover (``yt_UC…`` ids)."""

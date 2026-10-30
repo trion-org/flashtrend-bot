@@ -99,6 +99,8 @@ class SupabaseStore:
             min_cohort_n=int(r.get("min_cohort_n", d.min_cohort_n)),
             snapshot_ttl_days=int(r.get("snapshot_ttl_days", d.snapshot_ttl_days)),
             llm_enabled=bool(r.get("llm_enabled", d.llm_enabled)),
+            chart_enabled=bool(r.get("chart_enabled", d.chart_enabled)),
+            search_window_hours=int(r.get("search_window_hours", d.search_window_hours)),
         )
 
     # ------------------------------------------------------------------- runs
