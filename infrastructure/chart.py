@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import io
+import re
+import unicodedata
 
 from application.ports import ChartImage
 from domain.clock import to_vn
@@ -20,7 +22,7 @@ class MatplotlibChart:
         import matplotlib.pyplot as plt
 
         ranked = sorted(ideas, key=lambda i: i.candidate.viral_score)
-        labels = [_shorten(i.candidate.video.title, 46) for i in ranked]
+        labels = [_shorten(clean_label(i.candidate.video.title), 46) for i in ranked]
         scores = [i.candidate.viral_score for i in ranked]
         fig, ax = plt.subplots(figsize=(WIDTH_PX / DPI, HEIGHT_PX / DPI), dpi=DPI)
         try:
@@ -40,3 +42,12 @@ class MatplotlibChart:
 
 def _shorten(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+_SPACES = re.compile(r"\s+")
+
+
+def clean_label(text: str) -> str:
+    """Drop emoji and other symbols the default font has no glyph for (they render as boxes)."""
+    kept = [c for c in text if ord(c) <= 0xFFFF and unicodedata.category(c) not in ("So", "Cs", "Co", "Cn")]
+    return _SPACES.sub(" ", "".join(kept)).strip()

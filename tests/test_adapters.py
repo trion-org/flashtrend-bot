@@ -334,6 +334,12 @@ class SettingsTest(unittest.TestCase):
 
     def test_secret_values(self):
         self.assertEqual(cfg.from_env(self.ENV).secret_values(), ["y", "s", "g"])
+        with_s3 = cfg.from_env({**self.ENV, "S3_URL": "https://up.example/upload"})
+        self.assertEqual(with_s3.secret_values()[-1], "https://up.example/upload")  # masked in logs too
+        self.assertEqual(with_s3.s3_url, "https://up.example/upload")
+
+    def test_s3_url_is_optional(self):
+        self.assertEqual(cfg.from_env(self.ENV).s3_url, "")  # no upload endpoint → chart is skipped
 
 
 class DryRunStoreTest(unittest.TestCase):
@@ -350,6 +356,14 @@ class DryRunStoreTest(unittest.TestCase):
 
 
 class ChartTest(unittest.TestCase):
+    def test_clean_label_drops_emoji_but_keeps_vietnamese(self):
+        from infrastructure.chart import clean_label
+
+        self.assertEqual(clean_label("Google Flow AI 🔥  Full Tutorial #G"), "Google Flow AI Full Tutorial #G")
+        self.assertEqual(clean_label("TUẦN 2 – CHUNG KẾT ✨🏆"), "TUẦN 2 – CHUNG KẾT")
+        self.assertEqual(clean_label("Cách tạo Bot Python"), "Cách tạo Bot Python")
+
+
     def test_renders_a_small_png(self):
         from application.digest import RunDigest
         from tests.fakes import FakeEmbedder, FakeSource, FakeWriter

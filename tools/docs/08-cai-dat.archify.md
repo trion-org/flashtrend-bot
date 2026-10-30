@@ -1,11 +1,11 @@
 # Cần cấu hình những dịch vụ nào để chạy MVP? {#cai-dat}
 
-Bốn secret là đủ cho MVP: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `YOUTUBE_API_KEY`, `GEMINI_API_KEY`. Làm theo thứ tự GitHub → Supabase → YouTube → Gemini → Actions; OAuth upload và cookie yt-dlp chỉ cần ở v2.
+Bốn secret là đủ cho MVP (thêm `S3_URL` nếu muốn có ảnh biểu đồ): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `YOUTUBE_API_KEY`, `GEMINI_API_KEY`. Làm theo thứ tự GitHub → Supabase → YouTube → Gemini → Actions; OAuth upload và cookie yt-dlp chỉ cần ở v2.
 
 - Không có `TELEGRAM_*` trong repo này: token bot thuộc estfstudio.[](source:setup)
 - Dùng `service_role`, không dùng `anon`: RLS bật và không có policy, nên `anon` không ghi được.
 - API key YouTube chỉ giới hạn theo API, không giới hạn IP: IP của GitHub Actions thay đổi liên tục.
-- Image host (trang 07) hiện không cần khoá; nếu sau này cần thì thêm secret `IMAGE_HOST_*`.
+- Image host (trang 07) không cần khoá, chỉ cần địa chỉ upload trong secret `S3_URL` (tuỳ chọn; thiếu thì bỏ qua ảnh biểu đồ).
 
 @answer scope="Hướng dẫn cài đặt (2026-10-28) · giờ Việt Nam; cron của GitHub bắt buộc ghi UTC · workflow chạy `python main.py run`"
 @meta locale=vi
@@ -46,6 +46,7 @@ Bốn secret là đủ cho MVP: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `YO
 | `SUPABASE_SERVICE_ROLE_KEY` | MVP {good:Bắt buộc} | Cùng trang → `service_role` (không phải `anon`) |
 | `YOUTUBE_API_KEY` | MVP {good:Bắt buộc} | Google Cloud → Credentials → API key |
 | `GEMINI_API_KEY` | MVP {good:Bắt buộc} | aistudio.google.com/apikey |
+| `S3_URL` | MVP, tuỳ chọn | Địa chỉ `POST …/files/upload` của hệ thống mẹ; thiếu thì không upload biểu đồ |
 | `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN` | v2 upload | OAuth client Desktop + OAuth Playground |
 | `BILI_COOKIES` | v2 tải nguồn | Cookie Netscape của tài khoản bạn; không commit |
 
@@ -110,6 +111,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          S3_URL: ${{ secrets.S3_URL }}
 ```
 
 GitHub luôn đọc cron theo UTC.[](source:actions-cron) Phút lệch `17` tránh hàng chờ đầu giờ. Muốn chạy lần hai thì thêm `- cron: "17 11 * * *"` (11:17 UTC = 18:17 giờ VN). Bản đầy đủ nên có thêm bước `python -m pip install --upgrade pip` và `restore-keys: ${{ runner.os }}-pip-` cho cache.
@@ -225,7 +227,7 @@ JSON liệt kê model nghĩa là key sống; `API_KEY_INVALID` là sai key hoặ
 - [ ] `SUPABASE_URL` + `service_role` (không phải `anon`).
 - [ ] YouTube Data API v3 đã bật; API key chỉ giới hạn theo API đó.
 - [ ] Key Gemini; lệnh `curl` liệt kê được model.
-- [ ] Bốn secret MVP đã gắn; không có `TELEGRAM_*` trên repo này.
+- [ ] Bốn secret MVP (và `S3_URL` nếu dùng ảnh) đã gắn; không có `TELEGRAM_*` trên repo này.
 - [ ] estfstudio (ngoài repo) có cùng `SUPABASE_URL` + `service_role` trong `.secrets/secrets.yml`, và đã chạy migration `estf_*`.
 - [ ] `.env` có trong `.gitignore`; không secret nào trong tệp được track.
 - [ ] `workflow_dispatch` chạy được: lần đầu nên bật `dry_run` (đọc thật, không ghi, không gọi Gemini).

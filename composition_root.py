@@ -24,7 +24,7 @@ def build_digest(settings: Settings, observer: Observer, dry_run: bool = False) 
         writer=None if dry_run else GeminiWriter(
             settings.gemini_api_key, settings.gemini_model, settings.lang
         ),
-        image_host=None if dry_run else HttpImageHost(settings.image_upload_url),
+        image_host=HttpImageHost(settings.s3_url) if settings.s3_url and not dry_run else None,
         chart=None if dry_run else MatplotlibChart(),
         observer=observer,
         max_ideas=settings.max_ideas,

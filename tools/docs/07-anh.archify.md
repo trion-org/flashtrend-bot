@@ -1,13 +1,13 @@
 # Ảnh được upload ở đâu và lưu link thế nào? {#anh}
 
-Ảnh FlashTrend tự tạo (biểu đồ run, ảnh bìa) được POST multipart tới **image host bên thứ ba** (lệnh mẫu bên dưới); Supabase chỉ lưu URL trả về cùng `sha256` trong bảng `media`. Thumbnail YouTube đã có URL công khai (`i.ytimg.com`) nên **không cần upload**, chỉ lưu vào `videos.thumbnail_url`.
+Ảnh FlashTrend tự tạo (biểu đồ run, ảnh bìa) được POST multipart tới **image host của hệ thống mẹ** (lệnh mẫu bên dưới); Supabase chỉ lưu URL trả về cùng `sha256` trong bảng `media`. Thumbnail YouTube đã có URL công khai (`i.ytimg.com`) nên **không cần upload**, chỉ lưu vào `videos.thumbnail_url`.
 
 - Không dùng Supabase Storage: gói Free chỉ có 1 GB storage và 5 GB egress cho cả hai repo.[](source:pricing)
 - `sha256` là khoá duy nhất: một ảnh chỉ upload một lần, kể cả khi run chạy lại.
-- Endpoint là API nội bộ của một website, không phải dịch vụ ảnh có hợp đồng: phải coi là có thể hỏng bất cứ lúc nào.
+- Endpoint là API của hệ thống mẹ, không phải dịch vụ ảnh có hợp đồng: phải coi là có thể hỏng bất cứ lúc nào.
 - estfstudio cũng upload ảnh bìa từng phần lên cùng host, theo đúng quy trình dưới đây (`owner = 'estfstudio'`, `kind = 'cover'`).
 
-@answer scope="Endpoint lấy từ lệnh upload mẫu (2026-10-28) · chưa kiểm định dạng phản hồi · adapter đã viết, chưa gọi thử endpoint thật"
+@answer scope="Endpoint của hệ thống mẹ · đã thử upload thật (2026-10-31) · địa chỉ trong `S3_URL`"
 @meta locale=vi
 @source cmd title="Lệnh upload ảnh mẫu (PowerShell, 2026-10-28)"
 @source pricing title="Supabase pricing — Free plan" url=https://supabase.com/pricing
@@ -68,7 +68,7 @@ def upload(path: str, timeout: float = 30) -> tuple[str, str]:
     return url, digest
 ```
 
-Lệnh mẫu gửi thêm `Origin` và `Referer` của website. Chỉ thêm hai header đó nếu chạy thử chứng minh endpoint bắt buộc, và ghi rõ lý do trong mã.
+Lệnh mẫu gửi thêm `Origin` và `Referer`; chạy thử cho thấy hai header đó không bắt buộc nên mã không gửi.
 
 ## Rủi ro nào cần chấp nhận trước? {#rui-ro}
 
@@ -76,15 +76,15 @@ Lệnh mẫu gửi thêm `Origin` và `Referer` của website. Chỉ thêm hai h
 | --- | --- | --- |
 | Endpoint đổi hoặc chặn IP GitHub Actions | Run không có ảnh {caution:Mất ảnh} | Upload lỗi không làm run `error`; ghi `media` thiếu, digest vẫn gửi |
 | Website xoá tệp cũ | Link chết trong Telegram | Cron kiểm `HEAD url` mỗi tuần, đặt `alive = false` |
-| Điều khoản website không cho dùng làm kho ảnh | Bị khoá {bad:Pháp lý} | Hỏi chủ website; giữ adapter thay được (Catbox, imgbb, Cloudinary free) |
-| Repo public lộ endpoint | Người khác dùng chung, website siết lại | Không đưa ảnh riêng tư; không commit ảnh chụp màn hình |
-| Phản hồi không chứa URL công khai | Không có link để lưu | Chạy thử một lần trước khi viết mã, ghi định dạng vào tài liệu này |
+| Hệ thống mẹ đổi hoặc gỡ endpoint | Run không có ảnh | Địa chỉ nằm trong `S3_URL`; adapter thay được (Catbox, imgbb, Cloudinary free) |
+| Repo public lộ endpoint | Endpoint không cần khoá: ai biết địa chỉ (đã có trong lệnh mẫu của tài liệu này) đều upload được | Không đưa ảnh riêng tư; nên nhờ hệ thống mẹ giới hạn hoặc thêm khoá nếu bị lạm dụng; log của bot che `S3_URL` |
+| Phản hồi không chứa URL công khai | Không có link để lưu | Đã thử: phản hồi có trường `url`; mã vẫn tìm URL theo cấu trúc phòng khi đổi tên trường |
 
-@callout level=open-question title="Cần xác nhận trước khi code"
-Endpoint có cần cookie đăng nhập không? Lệnh mẫu không có, nhưng nó được chụp từ trang `profile/account`.
-Phản hồi JSON đặt URL ở trường nào, và URL đó có công khai, không hết hạn không?
+@callout level=note title="Đã thử endpoint (2026-10-31)"
+POST chỉ với `Accept: application/json` và `file=@ảnh.png;type=image/png` trả HTTP 200: không cần cookie, `Origin` hay `Referer`.
+Phản hồi: `{"statusCode":200,"message":"Upload file successfully","url":"https://…s3…amazonaws.com/files/<hash>.png"}`. URL là S3 công khai (HEAD trả 200).
 
-- [ ] Chạy lệnh upload mẫu ở trên một lần với ảnh thử, lưu phản hồi (đã che thông tin) vào tài liệu này.
-- [ ] Xác nhận có được phép dùng endpoint làm kho ảnh cho bot.
-- [ ] Chia sẻ kết quả chạy thử với estfstudio: nó chờ cùng câu trả lời ở mốc m5 của kế hoạch v1.1.0.
-- [ ] Đổi tên tệp thành `third-party.cmd` khi viết mã (lỗi chính tả "thirst").
+- [x] Chạy thử một lần với ảnh PNG nhỏ; định dạng phản hồi đã ghi ở trên.
+- [x] Endpoint thuộc hệ thống mẹ của ứng dụng (cùng chủ), nên không còn câu hỏi về điều khoản sử dụng.
+- [x] Địa chỉ nằm trong biến môi trường / secret `S3_URL` (tuỳ chọn): không có thì biểu đồ của run không được upload, run vẫn chạy.
+- [ ] Chưa biết S3 có xoá tệp cũ không: cron `HEAD url` hằng tuần vẫn là lưới an toàn.

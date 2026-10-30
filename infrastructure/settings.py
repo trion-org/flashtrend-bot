@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REQUIRED = ("YOUTUBE_API_KEY", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "GEMINI_API_KEY")
-SECRET_KEYS = ("YOUTUBE_API_KEY", "SUPABASE_SERVICE_ROLE_KEY", "GEMINI_API_KEY", "SUPABASE_DB_URL")
 
 
 def load_dotenv(path: str | Path = ".env", environ: dict[str, str] | None = None) -> None:
@@ -36,11 +35,13 @@ class Settings:
     max_ideas: int = 5
     git_sha: str = "local"
     trigger: str = "workflow_dispatch"
-    image_upload_url: str = "https://nobinobi.vn/shop-service/api/v1/files/upload"
+    s3_url: str = ""  # image upload endpoint of the parent system; empty = no chart upload
 
     def secret_values(self) -> list[str]:
         return [
-            v for v in (self.youtube_api_key, self.supabase_service_role_key, self.gemini_api_key)
+            v for v in (
+                self.youtube_api_key, self.supabase_service_role_key, self.gemini_api_key, self.s3_url
+            )
             if v
         ]
 
@@ -77,7 +78,5 @@ def from_env(environ: Mapping[str, str] | None = None, require: tuple[str, ...] 
         max_ideas=max_ideas,
         git_sha=get("GITHUB_SHA", "local")[:7] or "local",
         trigger="schedule" if github_event == "schedule" else "workflow_dispatch",
-        image_upload_url=get(
-            "IMAGE_HOST_URL", "https://nobinobi.vn/shop-service/api/v1/files/upload"
-        ),
+        s3_url=get("S3_URL"),
     )
