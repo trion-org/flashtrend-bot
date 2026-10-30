@@ -49,8 +49,8 @@ class SupabaseStoreIntegrationTest(unittest.TestCase):
         c = self.store.get_app_config()
         self.assertEqual((c.schema_version, c.z_threshold, c.relaxed_z_threshold, c.min_cohort_n),
                          (1, 1.5, 0.5, 20))
-        self.assertIn("python bot", c.keywords)
-        self.assertEqual(c.regions, ("VN", "JP"))
+        self.assertIn("hoạt hình 3D trung quốc", c.keywords)
+        self.assertEqual((len(c.keywords), c.regions), (7, ("VN",)))
 
     def test_02_full_run_writes_everything_the_docs_promise(self):
         r = self.run_digest()
