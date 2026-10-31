@@ -155,20 +155,24 @@ class RunStats:
 #: what a run looks for — see :class:`RunRequest`
 RUN_MODES = ("digest", "trending", "search")
 QUERY_MAX_CHARS = 200
+ONE_OFF_MIN_MINUTES = 60  # a one-off look keeps videos this long by default (compilations, not clips)
+MAX_MIN_MINUTES = 24 * 60
 _REQUEST_ID = re.compile(r"[A-Za-z0-9_.-]{1,64}")
 
 
 @dataclass(frozen=True)
 class RunRequest:
     """What a run looks for. ``digest`` (the hourly run): the configured niche searches and filters.
-    ``trending``: Bilibili's own hot lists — no keyword, no niche or length filter. ``search``: one query, in
-    any language, translated to Chinese and searched on Bilibili — every length, no niche filter.
+    ``trending``: Bilibili's own hot lists — no keyword, no niche filter. ``search``: one query, in any
+    language, translated to Chinese and searched on Bilibili — no niche filter. Both keep only videos of at
+    least ``min_minutes`` (0 = every length); the digest's length comes from ``app_config``.
     ``request_id`` is the caller's tag (estfstudio's ``/analysis``), stored on the run so the caller finds
     its results."""
 
     mode: str = "digest"
     query: str | None = None
     request_id: str | None = None
+    min_minutes: int = ONE_OFF_MIN_MINUTES
 
     def __post_init__(self) -> None:
         query = " ".join((self.query or "").split())[:QUERY_MAX_CHARS] or None
@@ -180,6 +184,8 @@ class RunRequest:
             raise ValueError("a search needs a query")
         if self.request_id and not _REQUEST_ID.fullmatch(self.request_id):
             raise ValueError("request id: 1-64 letters, digits, '_', '.' or '-'")
+        if not 0 <= self.min_minutes <= MAX_MIN_MINUTES:
+            raise ValueError(f"min minutes: 0-{MAX_MIN_MINUTES}, not {self.min_minutes}")
 
     @property
     def ad_hoc(self) -> bool:

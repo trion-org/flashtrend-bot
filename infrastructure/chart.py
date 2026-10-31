@@ -27,6 +27,7 @@ TEAL, ACCENT, VIOLET, MAGENTA, GOLD = "#2dd4a8", "#4c8dff", "#a77bf3", "#d96cf0"
 GRADIENT = (TEAL, ACCENT, VIOLET)  # the fill of bars, left to right / top to bottom
 PLATFORM_COLOR = {"youtube": "#ff6b81", "bilibili": "#35c9ee"}
 PLATFORM_NAME = {"youtube": "YouTube", "bilibili": "Bilibili"}
+NICHE_SCOPE = "Hoạt hình 3D Trung Quốc · Bilibili + YouTube"  # what the hourly digest looks at
 
 def blend(colors: tuple[str, ...], t: float) -> str:
     """The colour at fraction ``t`` (0..1) along the ``#rrggbb`` stops ``colors``."""
@@ -122,8 +123,9 @@ def stamp(when: datetime) -> str:
     return to_vn(when).strftime("%d/%m/%Y %H:%M")
 
 
-def frame(title: str, subtitle: str, run_id: str, when: datetime):
-    """A themed figure with header and footer; returns ``(fig, ax)`` where ``ax`` is the content panel."""
+def frame(title: str, subtitle: str, run_id: str, when: datetime, scope: str | None = None):
+    """A themed figure with header and footer (``scope``: what the run looked at; None = the niche);
+    returns ``(fig, ax)`` where ``ax`` is the content panel."""
     import matplotlib.pyplot as plt
 
     use_theme()
@@ -133,7 +135,7 @@ def frame(title: str, subtitle: str, run_id: str, when: datetime):
     fig.text(0.04, 0.808, subtitle, color=MUTED, fontsize=11, va="center")
     fig.text(0.96, 0.925, f"{stamp(when)} · giờ Việt Nam", color=MUTED, fontsize=10, ha="right", va="center")
     fig.text(0.04, 0.03, run_id, color=MUTED, fontsize=8.5, va="center")
-    fig.text(0.96, 0.03, "Hoạt hình 3D Trung Quốc · Bilibili + YouTube", color=MUTED, fontsize=8.5,
+    fig.text(0.96, 0.03, shorten(clean_label(scope or NICHE_SCOPE), 90), color=MUTED, fontsize=8.5,
              ha="right", va="center")
     ax = fig.add_axes([0.07, 0.11, 0.89, 0.64])
     for side in ("top", "right"):
@@ -189,7 +191,8 @@ def gradient_bar(ax, x: float, y: float, width: float, height: float, full_width
 class MatplotlibChart:
     """The run's top ideas, ranked in priority order (the niche first), as one shareable card."""
 
-    def render(self, run_id: str, ideas: list[Idea]) -> ChartImage | None:
+    def render(self, run_id: str, ideas: list[Idea], scope: str | None = None) -> ChartImage | None:
+        """``scope`` = what a one-off look looked at (None: the hourly digest's niche)."""
         if not ideas:
             return None
         import matplotlib.pyplot as plt
@@ -203,9 +206,11 @@ class MatplotlibChart:
         ax.axis("off")
         when = ideas[0].candidate.video.captured_at
         ax.text(48, 40, "FlashTrend", color=ACCENT, fontsize=11, fontweight="bold", va="center")
-        ax.text(48, 78, "Ý tưởng nổi bật hôm nay", color=TEXT, fontsize=24, fontweight="bold", va="center")
-        ax.text(48, 112, "Hoạt hình 3D Trung Quốc ưu tiên · xếp theo điểm viral", color=MUTED, fontsize=11.5,
-                va="center")
+        heading = "Video nổi bật" if scope else "Ý tưởng nổi bật hôm nay"
+        sub = f"{shorten(clean_label(scope), 80)} · xếp theo điểm viral" if scope else (
+            "Hoạt hình 3D Trung Quốc ưu tiên · xếp theo điểm viral")
+        ax.text(48, 78, heading, color=TEXT, fontsize=24, fontweight="bold", va="center")
+        ax.text(48, 112, sub, color=MUTED, fontsize=11.5, va="center")
         ax.text(WIDTH_PX - 48, 40, f"{stamp(when)} · giờ Việt Nam", color=MUTED, fontsize=10, ha="right",
                 va="center")
 

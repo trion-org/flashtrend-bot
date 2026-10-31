@@ -50,6 +50,10 @@ SERIES_URL = "https://api.bilibili.com/pgc/web/rank/list"
 POPULAR_URL = "https://api.bilibili.com/x/web-interface/popular"
 RANKING_URL = "https://api.bilibili.com/x/web-interface/ranking/v2"
 POPULAR_SIZE = 50  # one page of 综合热门; the 全站排行榜 always answers its top 100
+#: 综合热门 pages read when only long videos are wanted (about 3 in 100 last an hour), stopping early once
+#: enough long ones are found
+POPULAR_LONG_PAGES = 20
+POPULAR_LONG_ENOUGH = 40
 TRENDING_TAG = "trending"  # ``query_tag`` of a video from the hot lists (it was not searched for)
 PAGELIST_URL = "https://api.bilibili.com/x/player/pagelist"
 BREAKER_AFTER = 3  # consecutive blocked requests after which the rest of the run stops asking
@@ -150,12 +154,19 @@ class BilibiliSource:
                     found.setdefault(video.id, video)
         return list(found.values())
 
-    def trending(self, now: datetime) -> list[VideoSnapshot]:
-        """综合热门 then 全站排行榜, de-duplicated; a list that stays blocked is skipped and reported."""
+    def trending(self, now: datetime, min_duration_sec: int = 0) -> list[VideoSnapshot]:
+        """综合热门 then 全站排行榜, de-duplicated; a list that stays blocked is skipped and reported. With a
+        ``min_duration_sec`` 综合热门 is read page after page (up to ``POPULAR_LONG_PAGES``) until
+        ``POPULAR_LONG_ENOUGH`` videos are long enough; the caller still drops the short ones."""
         found: dict[str, VideoSnapshot] = {}
-        lists = (("综合热门", POPULAR_URL, {"ps": POPULAR_SIZE, "pn": 1}),
-                 ("全站排行榜", RANKING_URL, {"rid": 0, "type": "all"}))
+        pages = POPULAR_LONG_PAGES if min_duration_sec else 1
+        lists = [(f"综合热门 p.{pn}", POPULAR_URL, {"ps": POPULAR_SIZE, "pn": pn})
+                 for pn in range(1, pages + 1)]
+        lists.append(("全站排行榜", RANKING_URL, {"rid": 0, "type": "all"}))
+        popular_done = False
         for i, (name, url, params) in enumerate(lists):
+            if url == POPULAR_URL and popular_done:
+                continue
             if i:
                 self._sleep(self._pause)
             try:
@@ -165,10 +176,15 @@ class BilibiliSource:
                 if self._tripped():
                     break
                 continue
-            for item in (data.get("data") or {}).get("list") or []:
+            body = data.get("data") or {}
+            items = body.get("list") or []
+            for item in items:
                 video = self._parse_listed(item, now) if isinstance(item, dict) else None
                 if video:
                     found.setdefault(video.id, video)
+            if url == POPULAR_URL:
+                long_n = sum(1 for v in found.values() if (v.duration_sec or 0) >= min_duration_sec)
+                popular_done = not items or body.get("no_more") or long_n >= POPULAR_LONG_ENOUGH
         return list(found.values())
 
     def part_durations(self, bvids: list[str]) -> dict[str, list[int]]:

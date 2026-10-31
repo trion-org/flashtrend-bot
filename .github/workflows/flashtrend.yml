@@ -24,6 +24,10 @@ on:
         description: "Mã yêu cầu của người gọi (estfstudio /analysis), lưu vào runs.request_id"
         type: string
         default: ""
+      min_minutes:
+        description: "trending/search: chỉ giữ video dài từ bấy nhiêu phút (0 = mọi độ dài)"
+        type: string
+        default: "60"
 concurrency:
   # one-off looks run beside the hourly digest instead of queueing behind (or cancelling) each other
   group: flashtrend-${{ inputs.request || 'digest' }}
@@ -53,11 +57,12 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Run the digest
         # the query is user text: it reaches the program through env, quoted, never spliced into the script
-        run: python main.py run --output-dir output --mode "$FT_MODE" --query "$FT_QUERY" --request "$FT_REQUEST" ${{ inputs.dry_run && '--dry-run' || '' }}
+        run: python main.py run --output-dir output --mode "$FT_MODE" --query "$FT_QUERY" --request "$FT_REQUEST" --min-minutes "$FT_MIN_MINUTES" ${{ inputs.dry_run && '--dry-run' || '' }}
         env:
           FT_MODE: ${{ inputs.mode }}
           FT_QUERY: ${{ inputs.query }}
           FT_REQUEST: ${{ inputs.request }}
+          FT_MIN_MINUTES: ${{ inputs.min_minutes }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}

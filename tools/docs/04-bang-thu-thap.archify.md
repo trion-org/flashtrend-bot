@@ -104,7 +104,7 @@ Giờ không tìm YouTube vẫn đọc Bilibili (không tốn quota), nên danh 
 | Vị trí | Biểu đồ | Đọc để biết |
 | --- | --- | --- |
 | 1 | Video đang hot | Thẻ xếp hạng 8 video ưu tiên cao nhất, huy hiệu nền tảng và ngách |
-| 2 | Tăng trưởng lượt xem của video hot | Lượt xem tăng thêm kể từ lần đo đầu của 3 video hot tăng nhanh nhất, đọc từ `snapshots` (đo mỗi giờ); cuối mỗi đường là số lượt xem mỗi giờ |
+| 2 | Tăng trưởng lượt xem của video hot | Mỗi video trong danh sách hot (tối đa 10, đúng thứ tự) một ô nhỏ. Video đã được đo từ trước (đọc từ `snapshots`): nét liền là lượt xem tăng thêm qua các lần đo, nét đứt là tốc độ trung bình từ lúc đăng kéo qua cùng khoảng. Video mới gặp lần đầu chỉ có nét đứt từ 0 lúc đăng tới bây giờ, vì Bilibili không công bố lịch sử lượt xem |
 | 3 | Lượt xem và mức vượt kênh | Mỗi chấm là một video: lượt xem và z-score trong nền tảng của nó; vạch đứt là ngưỡng θ thật, vòng vàng là video hot |
 | 4 | Tỉ trọng nền tảng | Bilibili và YouTube chiếm bao nhiêu video và lượt xem |
 | 5 | Thời lượng video | Số video theo nhóm thời lượng; từ 4 giờ trở lên là tuyển tập |

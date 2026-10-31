@@ -39,19 +39,20 @@ class MultiSource:
             videos += [v for v in found if v.id not in seen]
         return videos
 
-    def search(self, query: str, now: datetime, window_hours: int) -> list[VideoSnapshot]:
-        """One query on Bilibili, every length, two pages (40 videos): what a one-off search asks for."""
+    def search(self, query: str, now: datetime, window_hours: int,
+               min_duration_sec: int = 0) -> list[VideoSnapshot]:
+        """One query on Bilibili, two pages (40 videos): what a one-off search asks for."""
         if not self._bilibili:
             return []
-        found = self._bilibili.collect((query,), now, window_hours, 0, pages=SEARCH_PAGES)
+        found = self._bilibili.collect((query,), now, window_hours, min_duration_sec, pages=SEARCH_PAGES)
         self._drain_warnings()
         self._obs.info(f"Bilibili: {len(found)} video(s) for {query!r}")
         return found
 
-    def trending(self, now: datetime) -> list[VideoSnapshot]:
+    def trending(self, now: datetime, min_duration_sec: int = 0) -> list[VideoSnapshot]:
         if not self._bilibili:
             return []
-        found = self._bilibili.trending(now)
+        found = self._bilibili.trending(now, min_duration_sec)
         self._drain_warnings()
         self._obs.info(f"Bilibili: {len(found)} video(s) from the hot lists")
         return found

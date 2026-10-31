@@ -198,11 +198,11 @@ class FakeAnalysis:
     def __init__(self, error=None):
         self.error, self.calls = error, []
 
-    def render(self, run_id, now, candidates, ideas, history, growth=None):
+    def render(self, run_id, now, candidates, ideas, history, growth=None, listed=None, scope=None):
         from application.ports import AnalysisImage
 
         self.calls.append((len(candidates), len(history)))
-        self.history, self.growth = history, growth
+        self.history, self.growth, self.listed, self.scope = history, growth, listed, scope
         if self.error:
             raise self.error
         return [AnalysisImage(f"c{n}", f"Biểu đồ {n}", n, b"\x89PNG-%d" % n, 10, 5) for n in (2, 3)]
@@ -230,13 +230,15 @@ class AnalysisChartsTest(unittest.TestCase):
         self.assertEqual(analysis.calls[0][1], 4)  # the stored runs, then this one
         self.assertEqual(analysis.history[-1].collected, len(store.snapshots))  # counted like the stored ones
 
-    def test_the_growth_chart_gets_the_hot_videos_earlier_snapshots(self):
+    def test_the_growth_chart_gets_the_hot_lists_videos_in_order_and_their_earlier_snapshots(self):
         store, analysis = FakeStore(), FakeAnalysis()
-        uc, _, _ = make(store=store, host=FakeImageHost(), analysis=analysis)
+        uc, _, _ = make(store=store, source=bilibili_source(), host=FakeImageHost(), analysis=analysis)
         uc.run()
-        passed = {c.video.id for c in store.candidates if c.passed_z}
-        self.assertTrue(passed)
-        self.assertEqual(set(analysis.growth), passed)  # only the hot videos are looked up
+        listed = [r.video_id for r in store.hot_videos[RUN_ID] if r.kind == "video"]
+        self.assertTrue(listed)
+        self.assertEqual([c.video.id for c in analysis.listed], listed)
+        self.assertEqual(set(analysis.growth), set(listed))  # only the hot list is looked up
+        self.assertIsNone(analysis.scope)  # the hourly digest keeps the niche's footer
 
     def test_a_crashing_renderer_only_loses_the_charts(self):
         uc, store, obs = make(host=FakeImageHost(), analysis=FakeAnalysis(RuntimeError("matplotlib")))
@@ -274,10 +276,11 @@ class FakeTranslator:
         return self.chinese
 
 
-def bilibili_source():
-    """The sample cohort as Bilibili videos: ten-minute clips, none of them in the niche."""
+def bilibili_source(duration_sec=None):
+    """The sample cohort as Bilibili videos: ten-minute clips (unless ``duration_sec``), none in the niche."""
     return FakeSource(videos=[dataclasses.replace(v, id="bi_" + v.native_id, platform="bilibili",
-                                                  url=f"https://www.bilibili.com/video/{v.native_id}")
+                                                  url=f"https://www.bilibili.com/video/{v.native_id}",
+                                                  duration_sec=duration_sec or v.duration_sec)
                               for v in sample_videos()])
 
 
@@ -285,19 +288,19 @@ class RunModesTest(unittest.TestCase):
     NICHE = AppConfig(keywords=("python bot",), bilibili_keywords=("国漫 合集",), min_duration_sec=4 * 3600,
                       niche_only=True, niche_terms=("国漫",), niche_boost=3.0, bilibili_series_types=(4,))
 
-    def run_mode(self, request, translator=None, analysis=None):
-        source = bilibili_source()
+    def run_mode(self, request, translator=None, analysis=None, duration_sec=None):
+        source = bilibili_source(duration_sec)
         uc, store, obs = make(store=FakeStore(self.NICHE), source=source, translator=translator,
                               analysis=analysis, host=FakeImageHost() if analysis else None)
         return uc.run(request), store, source, obs
 
     def test_a_search_is_translated_searched_on_bilibili_alone_and_keeps_every_length(self):
         translator = FakeTranslator()
-        request = RunRequest("search", "  phim hoạt hình   Tây Du Ký ", "tg1x2")
+        request = RunRequest("search", "  phim hoạt hình   Tây Du Ký ", "tg1x2", min_minutes=0)
         result, store, source, obs = self.run_mode(request, translator)
         self.assertEqual((result.status, result.run_id), ("ok", RUN_ID + "_search"))
         self.assertEqual(translator.queries, ["phim hoạt hình Tây Du Ký"])
-        self.assertEqual(source.searched, ("西游记 动画", self.NICHE.search_window_hours))
+        self.assertEqual((source.searched, source.min_asked), (("西游记 动画", self.NICHE.search_window_hours), 0))
         self.assertFalse(hasattr(source, "collect_args"))  # no YouTube, no niche keywords
         self.assertEqual(source.series_args, ())  # no 国创 series either
         run = store.runs[result.run_id]
@@ -310,11 +313,34 @@ class RunModesTest(unittest.TestCase):
     def test_trending_reads_the_hot_lists_and_draws_no_timeline(self):
         analysis = FakeAnalysis()
         result, store, source, _ = self.run_mode(RunRequest("trending", "ignored", "tg9"), FakeTranslator(),
-                                                 analysis)
+                                                 analysis, duration_sec=2 * 3600)
         self.assertEqual((result.status, result.run_id), ("ok", RUN_ID + "_trending"))
-        self.assertTrue(source.trended)
+        self.assertEqual((source.trended, source.min_asked), (True, 3600))  # an hour or more by default
         self.assertIsNone(store.runs[result.run_id]["request"].query)  # only a search keeps a query
         self.assertEqual(analysis.history, [])  # the timeline is the hourly runs': not this look's
+        self.assertEqual(analysis.scope, "Video hot toàn Bilibili · video từ 1 giờ")  # the charts' footer
+        rows = store.hot_videos[result.run_id]
+        self.assertEqual([c.video.id for c in analysis.listed], [r.video_id for r in rows])  # the growth chart
+
+    def test_a_one_off_look_keeps_videos_of_an_hour_or_more_by_default(self):
+        result, store, source, obs = self.run_mode(RunRequest("search", "西游记"), FakeTranslator())
+        self.assertEqual((result.status, source.min_asked), ("ok", 3600))  # the search asks for long ones
+        self.assertEqual(store.hot_videos.get(result.run_id, []), [])  # ten-minute clips: dropped
+        self.assertTrue(any("videos ≥ 60 min" in line for line in obs.lines))
+        self.assertEqual(RunRequest("search", "x", min_minutes=90).min_minutes, 90)
+        for bad in (-1, 24 * 60 + 1):
+            with self.assertRaises(ValueError):
+                RunRequest("trending", min_minutes=bad)
+
+    def test_what_a_look_looked_at_names_its_query_and_length(self):
+        from application.digest import scope_of
+
+        self.assertEqual(scope_of(RunRequest("search", "Tây Du Ký"), "西游记"),
+                         "Tìm «Tây Du Ký» → 西游记 trên Bilibili · video từ 1 giờ")
+        self.assertEqual(scope_of(RunRequest("search", "西游记", min_minutes=90), "西游记"),
+                         "Tìm «西游记» trên Bilibili · video từ 90 phút")
+        self.assertEqual(scope_of(RunRequest("trending", min_minutes=0), None), "Video hot toàn Bilibili")
+        self.assertIsNone(scope_of(RunRequest(), None))  # the digest: the niche's own footer
 
     def test_a_failed_translation_searches_what_was_typed(self):
         result, store, source, obs = self.run_mode(RunRequest("search", "西游记"), FakeTranslator(RuntimeError("429")))
@@ -481,7 +507,7 @@ class HotListTest(unittest.TestCase):
         seen = []
 
         class SpyChart:
-            def render(self, run_id, ideas):
+            def render(self, run_id, ideas, scope=None):
                 from application.ports import ChartImage
 
                 seen.append([(i.candidate.video.platform, i.niche) for i in ideas])

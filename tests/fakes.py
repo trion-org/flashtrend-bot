@@ -93,12 +93,12 @@ class FakeSource:
         self.error = error
         self.fetched: list[list[str]] = []
 
-    def search(self, query, now, window_hours):
-        self.searched = (query, window_hours)
+    def search(self, query, now, window_hours, min_duration_sec=0):
+        self.searched, self.min_asked = (query, window_hours), min_duration_sec
         return list(self.videos)
 
-    def trending(self, now):
-        self.trended = True
+    def trending(self, now, min_duration_sec=0):
+        self.trended, self.min_asked = True, min_duration_sec
         return list(self.videos)
 
     def collect(self, regions, keywords, now, chart_enabled=True, window_hours=48, bilibili_keywords=(),
@@ -173,7 +173,7 @@ class FakeImageHost:
 
 
 class FakeChart:
-    def render(self, run_id, ideas):
+    def render(self, run_id, ideas, scope=None):
         from application.ports import ChartImage
 
         return ChartImage(png=b"\x89PNG-" + run_id.encode(), width=10, height=5)

@@ -445,7 +445,7 @@ class AnalysisChartsRenderTest(unittest.TestCase):
     """The real charts, drawn from one fake run: what goes out and what each caption tells the reader."""
 
     @staticmethod
-    def run_and_render(prev_hours=(3, 2, 1)):
+    def run_and_render(prev_hours=(3, 2, 1), listed=True):
         from application.digest import RunDigest
         from domain.models import PreviousSnapshot
         from infrastructure.analysis_charts import AnalysisCharts
@@ -456,9 +456,10 @@ class AnalysisChartsRenderTest(unittest.TestCase):
         hot = [c for c in store.candidates if c.passed_z]
         growth = {c.video.id: [PreviousSnapshot(c.video.views - 900 * h * (k + 1), NOW - timedelta(hours=h))
                                for h in prev_hours] for k, c in enumerate(hot)}
-        return hot, AnalysisCharts().render(result.run_id, NOW, store.candidates, result.ideas, [], growth)
+        return hot, AnalysisCharts().render(result.run_id, NOW, store.candidates, result.ideas, [], growth,
+                                            hot if listed else None, "Video hot toàn Bilibili · video từ 1 giờ")
 
-    def test_the_growth_chart_replaces_the_z_score_distribution(self):
+    def test_the_growth_chart_draws_the_hot_list_one_panel_each(self):
         hot, images = self.run_and_render()
         self.assertTrue(hot)
         slugs = [(img.position, img.slug) for img in images]
@@ -467,11 +468,26 @@ class AnalysisChartsRenderTest(unittest.TestCase):
         self.assertTrue(all(img.png.startswith(b"\x89PNG") for img in images))
         growth = next(img for img in images if img.slug == "growth")
         self.assertTrue(growth.caption.startswith("Tăng trưởng lượt xem của video hot\n"))
-        self.assertIn("lượt/giờ", growth.caption)  # this run's fastest video, in plain words
+        self.assertIn("Bilibili không công bố lịch sử lượt xem", growth.caption)  # why some lines are dashed
+        self.assertIn(f"{len(hot)}/{len(hot)} video đã được bot đo", growth.caption)
+        self.assertIn("đang tăng nhanh nhất", growth.caption)  # the fastest one, in plain words
+        self.assertIn("lần trung bình từ lúc đăng", growth.caption)
 
-    def test_no_earlier_snapshot_no_growth_chart(self):
+    def test_without_an_earlier_snapshot_the_growth_chart_says_every_line_is_a_straight_join(self):
         _, images = self.run_and_render(prev_hours=())
-        self.assertNotIn("growth", [img.slug for img in images])
+        growth = next(img for img in images if img.slug == "growth")
+        self.assertIn("Chưa video nào được bot đo trước lần này", growth.caption)
+        self.assertIn("trung bình khoảng", growth.caption)
+        _, images = self.run_and_render(listed=False)
+        self.assertNotIn("growth", [img.slug for img in images])  # no hot list, no panels
+
+    def test_the_footer_names_what_a_one_off_look_looked_at(self):
+        from infrastructure.chart import NICHE_SCOPE, frame
+
+        fig, _ = frame("t", "s", "r", NOW, "Tìm «Tây Du Ký» trên Bilibili")
+        self.assertIn("Tìm «Tây Du Ký» trên Bilibili", [t.get_text() for t in fig.texts])
+        fig, _ = frame("t", "s", "r", NOW)
+        self.assertIn(NICHE_SCOPE, [t.get_text() for t in fig.texts])
 
     def test_every_caption_says_how_to_read_the_chart_and_what_this_run_shows(self):
         hot, images = self.run_and_render()

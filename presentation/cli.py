@@ -7,7 +7,7 @@ import sys
 from application.observer import Observer
 from domain import errors as E
 from domain.errors import FlashTrendError
-from domain.models import RUN_MODES, RunRequest
+from domain.models import ONE_OFF_MIN_MINUTES, RUN_MODES, RunRequest
 from infrastructure import settings as cfg
 from presentation.log import LogObserver
 from presentation.output import write_output
@@ -27,9 +27,13 @@ def build_parser() -> argparse.ArgumentParser:
                      "(empty = digest)")
     run.add_argument("--query", default=None, help="search mode: what to search for, any language")
     run.add_argument("--request", default=None, help="the caller's tag, stored on the run to find it")
+    run.add_argument("--min-minutes", default=None,
+                     help=f"trending/search: keep videos at least this long, 0 = every length "
+                          f"(empty = {ONE_OFF_MIN_MINUTES})")
     sub.add_parser("check-media", help="HEAD every media URL; mark 404s alive=false")
     sub.add_parser("check-bilibili", help="one anonymous Bilibili search + channel card (no secrets needed)")
-    p.set_defaults(command="run", dry_run=False, output_dir=None, mode="digest", query=None, request=None)
+    p.set_defaults(command="run", dry_run=False, output_dir=None, mode="digest", query=None, request=None,
+                   min_minutes=None)
     return p
 
 
@@ -47,7 +51,9 @@ def main(argv: list[str] | None = None, observer: Observer | None = None) -> int
         return EXIT_CONFIG
     obs = observer or LogObserver(settings.secret_values())
     try:
-        request = RunRequest(args.mode or "digest", args.query, args.request)
+        minutes = str(args.min_minutes or "").strip()
+        request = RunRequest(args.mode or "digest", args.query, args.request,
+                             int(minutes) if minutes else ONE_OFF_MIN_MINUTES)
     except ValueError as exc:
         print(f"configuration error: {exc}", file=sys.stderr)
         return EXIT_CONFIG

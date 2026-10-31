@@ -1,4 +1,5 @@
 import unittest
+import unittest.mock
 import urllib.error
 from datetime import timedelta
 from urllib.parse import parse_qs, urlparse
@@ -175,7 +176,25 @@ class TrendingTest(unittest.TestCase):
         ranking = {"code": 0, "data": {"list": [listed("BV3")]}}
         src, _ = source(http(412), http(412), http(412), ranking)
         self.assertEqual([v.native_id for v in src.trending(NOW)], ["BV3"])
-        self.assertIn("综合热门 skipped: HTTP 412", " ".join(src.warnings))
+        self.assertIn("综合热门 p.1 skipped: HTTP 412", " ".join(src.warnings))
+
+    def test_only_long_videos_wanted_reads_the_hot_list_deeper_until_enough_are_long(self):
+        from infrastructure import bilibili_api
+
+        def page(*bvids, duration=874, no_more=False):
+            return {"code": 0, "data": {"list": [listed(b, duration=duration) for b in bvids], "no_more": no_more}}
+
+        ranking = {"code": 0, "data": {"list": [listed("BVr", duration=7200)]}}
+        src, sleeps = source(page("BV1", "BV2"), page("BV3", duration=5400), page("BV4", duration=4000), ranking)
+        with unittest.mock.patch.object(bilibili_api, "POPULAR_LONG_ENOUGH", 2):
+            got = src.trending(NOW, 3600)
+        self.assertEqual([v.native_id for v in got], ["BV1", "BV2", "BV3", "BV4", "BVr"])  # the caller drops short
+        urls = src._fetch.urls
+        self.assertEqual([u.split("pn=")[1] for u in urls[:3]], ["1", "2", "3"])  # stopped: two long ones
+        self.assertIn("ranking/v2", urls[3])
+        self.assertEqual(len(urls), 4)
+        src, _ = source(page("BV1", no_more=True), ranking)  # the list ran out first
+        self.assertEqual([v.native_id for v in src.trending(NOW, 3600)], ["BV1", "BVr"])
 
 
 class ChannelTest(unittest.TestCase):
@@ -220,8 +239,8 @@ class FakeBili:
         self.calls.append((keywords, window_hours) + ((min_duration_sec, pages) if pages else ()))
         return self.videos
 
-    def trending(self, now):
-        self.calls.append("trending")
+    def trending(self, now, min_duration_sec=0):
+        self.calls.append(("trending", min_duration_sec))
         return self.videos
 
     def series_ranking(self, season_types):
@@ -298,7 +317,10 @@ class MultiSourceTest(unittest.TestCase):
         multi = MultiSource(yt, bili, notes)
         self.assertEqual([v.id for v in multi.search("西游记 动画", NOW, 2160)], ["bi_BV1aa"])
         self.assertEqual([v.id for v in multi.trending(NOW)], ["bi_BV1aa"])
-        self.assertEqual(bili.calls, [(("西游记 动画",), 2160, 0, 2), "trending"])
+        multi.search("西游记 动画", NOW, 2160, 3600)
+        multi.trending(NOW, 3600)
+        self.assertEqual(bili.calls, [(("西游记 动画",), 2160, 0, 2), ("trending", 0),
+                                      (("西游记 动画",), 2160, 3600, 2), ("trending", 3600)])
         self.assertEqual(notes.warns, ["Bilibili search '西游记' skipped: HTTP 412"])
         self.assertEqual((MultiSource(yt).search("x", NOW, 1), MultiSource(yt).trending(NOW)), ([], []))
 

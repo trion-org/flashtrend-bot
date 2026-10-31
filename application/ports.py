@@ -60,11 +60,14 @@ class VideoSource(Protocol):
     def hot_series(self, season_types: tuple[int, ...], now: datetime) -> list[HotSeries]:
         """Bilibili's live series ranking (4 = 国创); empty when it is off or unreachable."""
 
-    def search(self, query: str, now: datetime, window_hours: int) -> list[VideoSnapshot]:
-        """Bilibili's most-played videos for one query inside the window, every length."""
+    def search(self, query: str, now: datetime, window_hours: int,
+               min_duration_sec: int = 0) -> list[VideoSnapshot]:
+        """Bilibili's most-played videos for one query inside the window; a ``min_duration_sec`` of an hour
+        or more asks the search itself for long videos."""
 
-    def trending(self, now: datetime) -> list[VideoSnapshot]:
-        """Bilibili's own hot lists right now (综合热门 and 全站排行榜), every topic and length."""
+    def trending(self, now: datetime, min_duration_sec: int = 0) -> list[VideoSnapshot]:
+        """Bilibili's own hot lists right now (综合热门 and 全站排行榜), every topic; with a
+        ``min_duration_sec`` the lists are read deeper, as few of their videos are long."""
 
     def video_parts(self, video_ids: list[str]) -> dict[str, list[int]]:
         """Seconds of each part of a Bilibili video (``bi_BV…``); an id it could not check is absent."""
@@ -96,7 +99,7 @@ class ImageHost(Protocol):
 
 
 class ChartRenderer(Protocol):
-    def render(self, run_id: str, ideas: list[Idea]) -> ChartImage | None: ...
+    def render(self, run_id: str, ideas: list[Idea], scope: str | None = None) -> ChartImage | None: ...
 
 
 @dataclass(frozen=True)
@@ -128,9 +131,12 @@ class AnalysisRenderer(Protocol):
         ideas: list[Idea],
         history: list[RunPoint],
         growth: dict[str, list[PreviousSnapshot]] | None = None,
+        listed: list[Candidate] | None = None,
+        scope: str | None = None,
     ) -> list[AnalysisImage]:
         """Every analysis chart the data can support (a chart with too little data is left out);
-        ``history`` = the last runs, this one last; ``growth`` = the hot videos' earlier snapshots."""
+        ``history`` = the last runs, this one last; ``listed`` = the hot list, in order (the growth chart);
+        ``growth`` = their earlier snapshots; ``scope`` = what the run looked at (None: the niche)."""
 
 
 class DigestStore(Protocol):

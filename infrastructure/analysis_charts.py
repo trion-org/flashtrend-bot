@@ -35,6 +35,7 @@ from infrastructure.chart import (
     VIOLET,
     WIDTH_PX,
     clean_label,
+    compact,
     frame,
     gradient_colors,
     shorten,
@@ -42,10 +43,11 @@ from infrastructure.chart import (
 )
 
 MIN_POINTS = 5  # fewer candidates than this make a distribution chart meaningless
-#: hot videos drawn on the growth chart: lines cross, and only three categorical colours stay apart for every
-#: reader (the dataviz validator, all pairs, colour-blind included, on PANEL)
-GROWTH_LINES = 3
-LINE_COLORS = ("#3987e5", "#d95926", "#199e70")  # blue, orange, aqua
+#: the growth chart: one small panel per hot-list video (its 10 rows), in rows of 5, one hue for all — each
+#: panel is a single series, so a categorical palette would only add a legend to decode
+GROWTH_VIDEOS, GROWTH_COLUMNS = 10, 5
+LINE_COLOR = "#3987e5"
+MARKERS_UP_TO = 12  # measured points drawn as dots up to this many; an hourly run's three days stay a line
 
 DURATION_BUCKETS = (  # (label, upper bound in seconds)
     ("< 1 giờ", 3600), ("1–4 giờ", 14400), ("4–8 giờ", 28800), ("8–24 giờ", 86400), ("> 24 giờ", None),
@@ -97,6 +99,11 @@ def _time_axis(ax, times: list[datetime]) -> None:
     ax.set_xlabel(f"Giờ Việt Nam, ngày {days[0]:%d/%m}" if len(days) == 1 else "Giờ Việt Nam")
 
 
+def _span(days: float) -> str:
+    """How long a stretch lasted: ``3 ngày``, ``5 giờ``."""
+    return f"{days:.0f} ngày" if days >= 2 else f"{days * 24:.0f} giờ"
+
+
 def _style(ax, grid: str = "y") -> None:
     ax.set_facecolor(PANEL)
     ax.grid(axis=grid, color=GRID, linewidth=0.8)
@@ -112,18 +119,23 @@ class AnalysisCharts:
         ideas: list[Idea],
         history: list[RunPoint],
         growth: dict[str, list[PreviousSnapshot]] | None = None,
+        listed: list[Candidate] | None = None,
+        scope: str | None = None,
     ) -> list[AnalysisImage]:
         """Every chart the data supports; ``history`` = the last runs, this one last (the timeline);
-        ``growth`` = the hot videos' earlier snapshots, any order (the growth chart)."""
+        ``listed`` = the hot list in its order and ``growth`` = their earlier snapshots, any order (the growth
+        chart); ``scope`` = what a one-off look looked at, for the footers (None: the niche)."""
         made = (
-            (2, "growth", "Tăng trưởng lượt xem của video hot", lambda: self._growth(run_id, now, candidates,
+            (2, "growth", "Tăng trưởng lượt xem của video hot", lambda: self._growth(run_id, now, scope,
+                                                                                      listed or [],
                                                                                       growth or {})),
-            (3, "scatter", "Lượt xem và mức vượt kênh", lambda: self._scatter(run_id, now, candidates)),
-            (4, "platform", "Tỉ trọng nền tảng", lambda: self._platform(run_id, now, candidates)),
-            (5, "duration", "Thời lượng video", lambda: self._duration(run_id, now, candidates)),
-            (6, "hours", "Giờ đăng (giờ Việt Nam)", lambda: self._hours(run_id, now, candidates)),
-            (7, "keywords", "Từ khoá hiệu quả nhất", lambda: self._keywords(run_id, now, candidates)),
-            (8, "timeline", "Các lần chạy gần đây", lambda: self._timeline(run_id, now, history)),
+            (3, "scatter", "Lượt xem và mức vượt kênh",
+             lambda: self._scatter(run_id, now, scope, candidates)),
+            (4, "platform", "Tỉ trọng nền tảng", lambda: self._platform(run_id, now, scope, candidates)),
+            (5, "duration", "Thời lượng video", lambda: self._duration(run_id, now, scope, candidates)),
+            (6, "hours", "Giờ đăng (giờ Việt Nam)", lambda: self._hours(run_id, now, scope, candidates)),
+            (7, "keywords", "Từ khoá hiệu quả nhất", lambda: self._keywords(run_id, now, scope, candidates)),
+            (8, "timeline", "Các lần chạy gần đây", lambda: self._timeline(run_id, now, scope, history)),
         )
         out: list[AnalysisImage] = []
         for position, slug, title, draw in made:
@@ -136,72 +148,99 @@ class AnalysisCharts:
 
     # ------------------------------------------------------------------ charts
 
-    def _growth(self, run_id, now, candidates, growth):
-        series = []
-        for c in candidates:
-            if not c.passed_z:
-                continue
-            seen = {p.captured_at: p.views for p in growth.get(c.video.id, [])}
+    def _growth(self, run_id, now, scope, listed, growth):
+        """Small multiples, one per hot-list video. Bilibili keeps no view history, so a video the bot
+        measured before shows only the measured stretch: the views gained (solid) against its average pace
+        since upload over the same time (dashed). A video met for the first time has only that dashed pace,
+        from 0 at upload to now."""
+        import matplotlib.dates as mdates
+        from matplotlib.ticker import MaxNLocator
+
+        shown = [(rank, c) for rank, c in enumerate(listed[:GROWTH_VIDEOS], start=1) if c.video.views > 0]
+        if not shown:
+            return None
+        cols = min(GROWTH_COLUMNS, len(shown))
+        rows = -(-len(shown) // cols)
+        fig, ax = frame(f"Tăng trưởng lượt xem của {len(shown)} video hot",
+                        "Nét liền = lượt xem tăng thêm qua các lần bot đo · nét đứt = tốc độ trung bình "
+                        "từ lúc đăng · mỗi ô một thang riêng", run_id, now, scope)
+        ax.remove()
+        grid = fig.add_gridspec(rows, cols, left=0.055, right=0.985, bottom=0.1, top=0.69,
+                                hspace=0.95 if rows > 1 else 0.5, wspace=0.42)
+        paces = []  # (views per day, measured lately?, rank, candidate, times faster than its average)
+        for i, (rank, c) in enumerate(shown):
+            ax = fig.add_subplot(grid[i // cols, i % cols])
+            _style(ax)
+            seen = {p.captured_at: p.views for p in growth.get(c.video.id, [])
+                    if p.captured_at >= c.video.published_at}
             seen[c.video.captured_at] = c.video.views
             points = sorted(seen.items())
-            hours = (points[-1][0] - points[0][0]).total_seconds() / 3600 if len(points) >= 2 else 0
-            if hours > 0:
-                series.append(((points[-1][1] - points[0][1]) / hours, c, points))
-        if not series:
-            return None
-        series.sort(key=lambda s: -s[0])
-        shown = series[:GROWTH_LINES]
-        fig, ax = frame("Tăng trưởng lượt xem của video hot",
-                        "Lượt xem tăng thêm kể từ lần đo đầu (đo mỗi giờ) · "
-                        "đường càng dốc = video càng hút người xem",
-                        run_id, now)
-        _style(ax, "both")
-        ends = []
-        for color, (rate, c, points) in zip(LINE_COLORS, shown, strict=False):
-            xs = [to_vn(t) for t, _ in points]
-            ys = [v - points[0][1] for _, v in points]
-            ax.plot(xs, ys, color=color, linewidth=2, marker="o", markersize=6, markeredgecolor=PANEL,
-                    markeredgewidth=1.5, label=(f"{_name(c.video.platform)} · "
-                                                f"{shorten(clean_label(c.shown_title), 34)}"))
-            ends.append((ys[-1], xs[-1], f"+{_num(rate)}/giờ"))
-        top = max(max(y for y, _, _ in ends), 1)
-        ax.set_ylim(0, top * 1.25)
-        gap, placed = top * 0.08, []
-        for y, x, text in sorted(ends):  # labels at the line ends, pushed apart so none sits on another
-            y = max([y] + [p + gap for p in placed])
-            placed.append(y)
-            ax.annotate(text, (x, y), xytext=(8, 0), textcoords="offset points", va="center", color=TEXT,
-                        fontsize=10, fontweight="bold")
-        first = min(to_vn(p[0][0]) for _, _, p in shown)
-        last = max(to_vn(p[-1][0]) for _, _, p in shown)
-        ax.set_xlim(first - (last - first) * 0.03, last + (last - first) * 0.16)
-        _time_axis(ax, [to_vn(t) for _, _, p in shown for t, _ in p])
-        ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: _num(x)))
-        ax.set_ylabel("Lượt xem tăng thêm")
-        _legend(ax, loc="upper left")
-        rate, c, points = shown[0]
-        gained, hours = points[-1][1] - points[0][1], (points[-1][0] - points[0][0]).total_seconds() / 3600
-        more = (f" Vẽ {len(shown)}/{len(series)} video hot tăng nhanh nhất." if len(series) > len(shown)
-                else "")
+            last_t, last_v = points[-1]
+            avg = last_v / max((last_t - c.video.published_at).total_seconds() / 86400, 1 / 24)
+            span = (last_t - points[0][0]).total_seconds() / 86400
+            if len(points) >= 2 and span * 24 >= 1:  # measured: the gains, against the average pace
+                xs = [to_vn(t) for t, _ in points]
+                ys = [v - points[0][1] for _, v in points]
+                recent = ys[-1] / span
+                ax.plot([xs[0], xs[-1]], [0, avg * span], color=LINE_COLOR, linewidth=1.6,
+                        linestyle=(0, (3, 3)))
+                dots = len(xs) <= MARKERS_UP_TO
+                ax.plot(xs, ys, color=LINE_COLOR, linewidth=2, marker="o" if dots else None, markersize=6,
+                        markeredgecolor=PANEL, markeredgewidth=1.5)
+                top = max(max(ys), avg * span)
+                info = f"+{compact(ys[-1])} trong {_span(span)} · {compact(recent)}/ngày"
+                paces.append((recent, True, rank, c, recent / avg if avg else 0))
+                fmt = "%H:%M" if xs[0].date() == xs[-1].date() else "%d/%m"
+            else:  # met for the first time: only the straight pace from upload
+                xs, ys = [to_vn(c.video.published_at), to_vn(last_t)], [0, last_v]
+                ax.plot(xs, ys, color=LINE_COLOR, linewidth=1.6, linestyle=(0, (3, 3)))
+                top = last_v
+                info = f"{compact(last_v)} lượt · TB {compact(avg)}/ngày"
+                paces.append((avg, False, rank, c, 1.0))
+                fmt = "%H:%M" if xs[0].date() == xs[-1].date() else "%d/%m"
+            ax.plot(xs[-1:], ys[-1:], color=LINE_COLOR, marker="o", markersize=6, markeredgecolor=PANEL,
+                    markeredgewidth=1.5)
+            ax.set_ylim(0, top * 1.15 or 1)
+            ax.set_xlim(xs[0], xs[-1] + (xs[-1] - xs[0]) * 0.06)
+            ax.set_xticks([xs[0], xs[-1]])
+            ax.xaxis.set_major_formatter(mdates.DateFormatter(fmt, tz=xs[0].tzinfo))
+            ax.yaxis.set_major_locator(MaxNLocator(3))
+            ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: compact(x)))
+            ax.tick_params(labelsize=8)
+            title = shorten(clean_label(c.shown_title) or c.video.native_id, 24)
+            ax.set_title(f"{rank}. {title}", loc="left", color=TEXT, fontsize=9.5, fontweight="bold", pad=17)
+            ax.text(0, 1.035, info, transform=ax.transAxes, color=MUTED, fontsize=8.5, va="bottom")
+        measured = [p for p in paces if p[1]]
         note = " ".join((
-            "Mỗi đường là một video đã vượt ngưỡng hot, mỗi điểm là một lần đo (bot đo mỗi giờ).",
-            "Trục dọc là số lượt xem tăng thêm kể từ lần đo đầu:",
-            "đường càng dốc là video càng đang hút người xem,",
-            "đường đi ngang là video đã chững lại.",
-            "Con số cuối mỗi đường là tốc độ trung bình (lượt xem mỗi giờ)." + more,
-        )) + (f"\nNhanh nhất lượt này: {shorten(clean_label(c.shown_title), 40)} "
-              f"({_name(c.video.platform)}) — "
-              f"+{_num(gained)} lượt xem trong {hours:.0f} giờ, khoảng {_num(rate)} lượt/giờ.")
+            "Mỗi ô là một video trong danh sách hot, đúng thứ tự trong tin nhắn; mỗi ô có thang riêng.",
+            "Bilibili không công bố lịch sử lượt xem, nên bot chỉ biết những lần chính nó đo.",
+            "Video đã được đo nhiều lần (lần chạy mỗi giờ, hoặc lần tìm trước):",
+            "nét liền là lượt xem tăng thêm qua các lần đo,",
+            "nét đứt là tốc độ trung bình từ lúc đăng kéo qua cùng khoảng thời gian —",
+            "nét liền dốc hơn nét đứt là video đang tăng nhanh hơn trước, thoải hơn là đã chững lại.",
+            "Video mới gặp lần đầu chỉ có nét đứt: đường thẳng từ 0 lúc đăng tới lượt xem bây giờ.",
+        ))
+        if measured:
+            pace, _, rank, c, times = max(measured, key=lambda p: p[0])
+            note += (f"\nLượt này: số {rank}, {shorten(clean_label(c.shown_title), 40)} đang tăng nhanh "
+                     f"nhất — khoảng {_num(pace)} lượt xem mỗi ngày gần đây ({_decimal(round(times, 1))} lần "
+                     f"trung bình từ lúc đăng). {len(measured)}/{len(shown)} video đã được bot đo từ trước.")
+        else:
+            pace, _, rank, c, _ = max(paces, key=lambda p: p[0])
+            note += (f"\nNhanh nhất: số {rank}, {shorten(clean_label(c.shown_title), 40)} — trung bình "
+                     f"khoảng {_num(pace)} lượt xem mỗi ngày. Chưa video nào được bot đo trước lần này, "
+                     "nên mọi ô còn là nét đứt.")
         return fig, note
 
-    def _scatter(self, run_id, now, candidates):
+    def _scatter(self, run_id, now, scope, candidates):
         usable = [c for c in candidates if c.video.views > 0]
         if len(usable) < MIN_POINTS:
             return None
         n_out = sum(1 for c in usable if c.passed_z)
         fig, ax = frame("Lượt xem và mức vượt kênh",
                         "Mỗi chấm là một video · càng sang phải càng nhiều lượt xem · "
-                        "càng lên cao càng vượt xa mức thường của kênh · vòng vàng = video hot", run_id, now)
+                        "càng lên cao càng vượt xa mức thường của kênh · vòng vàng = video hot",
+                        run_id, now, scope)
         _style(ax, "both")
         for platform, items in _by_platform(usable).items():
             ax.scatter([c.video.views for c in items], [c.z_score for c in items], s=38, alpha=0.78,
@@ -242,7 +281,7 @@ class AnalysisCharts:
         )) + f"\nLượt này: {n_out}/{len(usable)} video vượt ngưỡng{top}"
         return fig, note
 
-    def _platform(self, run_id, now, candidates):
+    def _platform(self, run_id, now, scope, candidates):
         groups = _by_platform(candidates)
         if len(groups) < 2:  # one platform (a Bilibili-only look) is all of everything: nothing to compare
             return None
@@ -250,7 +289,7 @@ class AnalysisCharts:
         views = [sum(c.video.views for c in v) for v in groups.values()]
         sub = (f"{sum(counts)} video · {_num(sum(views))} lượt xem · vòng trái: số video, "
                "vòng phải: lượt xem")
-        fig, base = frame("Tỉ trọng nền tảng", sub, run_id, now)
+        fig, base = frame("Tỉ trọng nền tảng", sub, run_id, now, scope)
         base.set_axis_off()  # the donuts have their own axes; the frame's would show a 0–1 grid behind them
         for pos, (title, data, total) in enumerate((("Số video", counts, str(sum(counts))),
                                                      ("Lượt xem", views, _num(sum(views))))):
@@ -275,7 +314,7 @@ class AnalysisCharts:
         )) + f"\nLượt này: {shares}."
         return fig, note
 
-    def _duration(self, run_id, now, candidates):
+    def _duration(self, run_id, now, scope, candidates):
         timed = [c for c in candidates if c.video.duration_sec]
         if len(timed) < MIN_POINTS:
             return None
@@ -287,7 +326,7 @@ class AnalysisCharts:
         groups = _by_platform(timed)
         long_n = sum(1 for c in timed if c.video.duration_sec >= 14400)
         fig, ax = frame("Thời lượng video", f"Số video theo độ dài · {long_n}/{len(timed)} video dài từ "
-                        "4 giờ (tuyển tập nhiều tập)", run_id, now)
+                        "4 giờ (tuyển tập nhiều tập)", run_id, now, scope)
         _style(ax)
         bottoms = [0] * len(labels)
         for platform, items in groups.items():
@@ -310,7 +349,7 @@ class AnalysisCharts:
               f"({bottoms[peak]} video).")
         return fig, note
 
-    def _hours(self, run_id, now, candidates):
+    def _hours(self, run_id, now, scope, candidates):
         if len(candidates) < MIN_POINTS:
             return None
         import numpy as np
@@ -322,7 +361,8 @@ class AnalysisCharts:
             for c in items:
                 grid[row, to_vn(c.video.published_at).hour] += 1
         fig, ax = frame("Giờ đăng (giờ Việt Nam)",
-                        "Số video được đăng lên vào mỗi giờ · ô càng sáng càng nhiều video", run_id, now)
+                        "Số video được đăng lên vào mỗi giờ · ô càng sáng càng nhiều video",
+                        run_id, now, scope)
         heat = LinearSegmentedColormap.from_list("t", [PANEL, "#2c3a9e", VIOLET, TEAL])
         ax.imshow(grid, aspect="auto", cmap=heat)
         ax.set_xticks(range(24), [f"{h:02d}" for h in range(24)], fontsize=9)
@@ -343,7 +383,7 @@ class AnalysisCharts:
         )) + f"\nLượt này: giờ đăng nhiều nhất là {busiest:02d}h ({int(totals[busiest])} video)."
         return fig, note
 
-    def _keywords(self, run_id, now, candidates):
+    def _keywords(self, run_id, now, scope, candidates):
         tags: dict[str, list[Candidate]] = defaultdict(list)
         for c in candidates:
             if c.video.query_tag:
@@ -355,7 +395,7 @@ class AnalysisCharts:
         fig, ax = frame("Từ khoá hiệu quả nhất",
                         "Lượt xem của video đứng giữa trong số video tìm được bằng mỗi từ khoá · "
                         "n = số video",
-                        run_id, now)
+                        run_id, now, scope)
         _style(ax, "x")
         ax.set_position([0.24, 0.11, 0.72, 0.64])
         rows.reverse()
@@ -381,13 +421,13 @@ class AnalysisCharts:
     def _tag_name(tag: str) -> str:
         return shorten(clean_label(tag) or tag, 30)
 
-    def _timeline(self, run_id, now, points):
+    def _timeline(self, run_id, now, scope, points):
         if len(points) < 3:
             return None
         xs = [to_vn(p.started_at) for p in points]
         sub = (f"{len(points)} lần chạy mới nhất · mỗi điểm là một lần chạy · khung trên: video thu được, "
                "khung dưới: video hot")
-        fig, ax = frame("Các lần chạy gần đây", sub, run_id, now)
+        fig, ax = frame("Các lần chạy gần đây", sub, run_id, now, scope)
         _style(ax)
         ax.set_position([0.07, 0.47, 0.89, 0.28])
         low = fig.add_axes([0.07, 0.11, 0.89, 0.28], sharex=ax)  # one time axis, one scale per panel

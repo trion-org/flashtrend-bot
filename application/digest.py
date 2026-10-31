@@ -132,6 +132,8 @@ class RunDigest:
                              request if request.ad_hoc else None, query_zh)
         looks_for = {"digest": f"regions={list(config.regions)}", "trending": "Bilibili hot lists",
                      "search": f"search {request.query!r} → {query_zh!r}"}[request.mode]
+        if request.ad_hoc and request.min_minutes:
+            looks_for += f", videos ≥ {request.min_minutes} min"
         self._obs.info(f"{run_id}: opened ({looks_for})")
 
         stats = RunStats()
@@ -194,9 +196,10 @@ class RunDigest:
 
         # w2 — collect, channel baselines, videos, snapshots
         if request.mode == "search":
-            videos = self._source.search(query_zh or request.query or "", now, config.search_window_hours)
+            videos = self._source.search(query_zh or request.query or "", now, config.search_window_hours,
+                                         config.min_duration_sec)
         elif request.mode == "trending":
-            videos = self._source.trending(now)
+            videos = self._source.trending(now, config.min_duration_sec)
         else:
             videos = self._collect_digest(run_id, config, now)
         stats.collected = len(videos)
@@ -240,10 +243,11 @@ class RunDigest:
         if ideas:
             self._store.insert_ideas(run_id, ideas)
 
-        picks = self._hot(run_id, config, now, candidates, channels, niche)
+        picks, listed = self._hot(run_id, config, now, candidates, channels, niche)
         # this run on the timeline, counted like the stored ones (videos collected, not only those scored)
         current = None if request.ad_hoc else RunPoint(now, stats.collected, stats.outliers, len(ideas))
-        chart_media_id = self._images(run_id, config, now, candidates, ideas, picks, current)
+        chart_media_id = self._images(run_id, config, now, candidates, ideas, picks, current, listed,
+                                      scope_of(request, query_zh))
         return ideas, chart_media_id
 
     def _collect_digest(self, run_id: str, config: AppConfig, now: datetime) -> list[VideoSnapshot]:
@@ -430,8 +434,9 @@ class RunDigest:
         candidates: list[Candidate],
         channels: dict[str, Channel],
         niche: dict[str, bool],
-    ) -> list[Idea]:
-        """Hottest by priority (niche first): Bilibili's go to ``hot_videos``, the top of all to the card."""
+    ) -> tuple[list[Idea], list[Candidate]]:
+        """Hottest by priority (niche first): Bilibili's go to ``hot_videos``, the top of all to the card.
+        Returns the card's picks and the hot list's videos, in its order (the growth chart draws those)."""
         ranked = sorted(candidates, key=lambda c: _priority(c, config, niche), reverse=True)
 
         def title_of(c: Candidate) -> str:
@@ -448,9 +453,10 @@ class RunDigest:
                                f"{total / 3600:.1f} h")
                 continue
             shown.append(c)
+        listed = shown[:HOT_LIST_SIZE]
         rows = [
             self._hot_row(i, c, title_of(c), niche.get(c.video.id, False), parts.get(c.video.id))
-            for i, c in enumerate(shown[:HOT_LIST_SIZE], start=1)
+            for i, c in enumerate(listed, start=1)
         ]
         rows += self._series_rows(run_id, config, now)
         # every title a Vietnamese reader meets — the hot list, the card, the charts' hot videos — translated
@@ -464,10 +470,11 @@ class RunDigest:
                 self._store.insert_hot_videos(run_id, rows)
             except Exception as exc:  # noqa: BLE001 - sql/07 not applied yet, or a blip: the digest goes on
                 self._obs.warn(f"{run_id}: hot_videos not written ({type(exc).__name__}: {exc})")
-        return [
+        picks = [
             Idea(candidate=c, channel_title=title_of(c), cluster_id="hot", niche=niche.get(c.video.id, False))
             for c in ranked[:CARD_SIZE]
         ]
+        return picks, listed
 
     @staticmethod
     def _hot_row(rank: int, c: Candidate, channel: str, in_niche: bool, parts: list[int] | None) -> HotVideo:
@@ -571,9 +578,12 @@ class RunDigest:
         ideas: list[Idea],
         picks: list[Idea],
         current: RunPoint | None = None,
+        listed: list[Candidate] | None = None,
+        scope: str | None = None,
     ) -> str | None:
         """The top card and the analysis charts → image host → ``media``. Never fails the run (docs/07).
-        ``current`` = this run on the timeline of the hourly runs; None (a one-off look) draws no timeline."""
+        ``current`` = this run on the timeline of the hourly runs; None (a one-off look) draws no timeline.
+        ``listed`` = the hot list (the growth chart); ``scope`` = what a one-off look looked at."""
         if not (self._image_host and (self._chart or self._analysis) and picks):
             return None
         if self._trigger == "schedule" and now.hour % max(1, config.analysis_every_hours):
@@ -584,7 +594,7 @@ class RunDigest:
         card_id: str | None = None
         if self._chart:
             try:
-                image = self._chart.render(run_id, picks)
+                image = self._chart.render(run_id, picks, scope)
                 if image:
                     card_id = self._publish(
                         run_id, image.png, image.width, image.height, "top", "Video đang hot", 1
@@ -597,7 +607,8 @@ class RunDigest:
             except Exception as exc:  # noqa: BLE001 - only the timeline chart needs it
                 self._obs.warn(f"{run_id}: run history unavailable ({type(exc).__name__}: {exc})")
                 history = []
-            hot = [c.video.id for c in candidates if c.passed_z]
+            listed = listed or []
+            hot = [c.video.id for c in listed]
             try:
                 growth = self._store.previous_snapshots(hot, now, GROWTH_POINTS) if hot else {}
             except Exception as exc:  # noqa: BLE001 - only the growth chart needs them
@@ -606,7 +617,7 @@ class RunDigest:
                 growth = {}
             try:
                 points = [*history, current] if current else history
-                images = self._analysis.render(run_id, now, candidates, ideas, points, growth)
+                images = self._analysis.render(run_id, now, candidates, ideas, points, growth, listed, scope)
             except Exception as exc:  # noqa: BLE001
                 self._obs.warn(f"{run_id}: analysis charts skipped ({type(exc).__name__}: {exc})")
                 images = []
@@ -723,12 +734,31 @@ def _velocity_acceleration(video: VideoSnapshot, prev) -> tuple[float | None, fl
 
 
 def for_request(config: AppConfig, request: RunRequest) -> AppConfig:
-    """What a one-off look drops: YouTube, the niche searches, the niche and length filters, the niche boost
-    and the 国创 series — it shows what is hot for its own query (or the whole site), as it is."""
+    """What a one-off look drops: YouTube, the niche searches, the niche filter, the niche boost and the 国创
+    series — it shows what is hot for its own query (or the whole site), as it is; its own length filter
+    (``min_minutes``) replaces the niche's."""
     if not request.ad_hoc:
         return config
-    return replace(config, keywords=(), chart_enabled=False, bilibili_keywords=(), min_duration_sec=0,
-                   niche_only=False, niche_boost=1.0, bilibili_series_types=())
+    return replace(config, keywords=(), chart_enabled=False, bilibili_keywords=(),
+                   min_duration_sec=request.min_minutes * 60, niche_only=False, niche_boost=1.0,
+                   bilibili_series_types=())
+
+
+def length_text(minutes: int) -> str:
+    """``60`` → ``1 giờ``, ``90`` → ``90 phút``."""
+    return f"{minutes // 60} giờ" if minutes % 60 == 0 else f"{minutes} phút"
+
+
+def scope_of(request: RunRequest, query_zh: str | None) -> str | None:
+    """What a one-off look looked at, for the charts' footers; None for the digest (the niche)."""
+    if not request.ad_hoc:
+        return None
+    if request.mode == "search":
+        zh = f" → {query_zh}" if query_zh and query_zh != request.query else ""
+        looked = f"Tìm «{request.query}»{zh} trên Bilibili"
+    else:
+        looked = "Video hot toàn Bilibili"
+    return looked + (f" · video từ {length_text(request.min_minutes)}" if request.min_minutes else "")
 
 
 def _text_hash(text: str) -> str:
