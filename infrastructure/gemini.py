@@ -3,7 +3,8 @@ a Vietnamese reader meets translated, and a search request turned into a Chinese
 (:class:`GeminiTranslator`).
 
 REST over ``requests`` with the key in a header (never in the URL, so it cannot leak into logs or
-error messages). 429 and a busy model (500/503) are retried with backoff; a 429 that stays is reported as
+error messages). 429 and a busy model (500/503) are retried with backoff (a 429 waits as long as its
+``retryDelay`` asks, up to a minute, and a daily quota is not retried); a 429 that stays is reported as
 ``GEMINI_RATE_LIMIT``.
 """
 from __future__ import annotations
@@ -127,8 +128,9 @@ class GeminiWriter:
                 ) from exc
             if resp.status_code == 200:
                 return parse_response(resp.json())
-            if resp.status_code in RETRIED and attempt < self._max_retries:
-                self._sleep(self._backoff * (2**attempt))
+            asked = _asked_wait(resp) if resp.status_code == 429 else 0.0
+            if resp.status_code in RETRIED and attempt < self._max_retries and asked is not None:
+                self._sleep(max(self._backoff * (2**attempt), asked))
                 continue
             if resp.status_code == 429:
                 raise FlashTrendError(
@@ -271,6 +273,31 @@ def _cap(text: str, limit: int = MAX_TITLE_CHARS) -> str:
         return text
     cut = text[:limit - 1].rsplit(" ", 1)[0] or text[:limit - 1]
     return cut.rstrip(" ,.;:!?-–|") + "…"
+
+
+#: the longest wait a 429's own ``retryDelay`` may ask for: a per-minute quota clears within it
+MAX_ASKED_WAIT = 60.0
+
+
+def _asked_wait(resp) -> float | None:
+    """How long a 429 asks to wait (its ``RetryInfo.retryDelay``, at most ``MAX_ASKED_WAIT``; 0 if it does
+    not say); None when the quota is a daily one — waiting a minute cannot help, so it is not retried."""
+    try:
+        details = resp.json().get("error", {}).get("details", []) or []
+    except (ValueError, AttributeError):
+        return 0.0
+    wait = 0.0
+    for d in details:
+        if not isinstance(d, dict):
+            continue
+        if any("PerDay" in str(v.get("quotaId", "")) for v in d.get("violations", []) if isinstance(v, dict)):
+            return None
+        delay = str(d.get("retryDelay") or "")
+        try:
+            wait = max(wait, min(float(delay[:-1]), MAX_ASKED_WAIT)) if delay.endswith("s") else wait
+        except ValueError:
+            pass
+    return wait
 
 
 def _api_message(resp) -> str:

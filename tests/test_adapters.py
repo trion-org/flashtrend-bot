@@ -126,6 +126,26 @@ class GeminiTest(unittest.TestCase):
             self.writer(Session(*[Resp(503)] * 4)).write(BRIEF)
         self.assertEqual(cm.exception.code, E.GEMINI_API)
 
+    def test_a_per_minute_429_waits_as_long_as_it_asks_and_a_daily_one_is_not_retried(self):
+        def quota(quota_id, delay=None):
+            details = [{"violations": [{"quotaId": quota_id}]}]
+            if delay:
+                details.append({"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": delay})
+            return Resp(429, {"error": {"code": 429, "details": details}})
+
+        sleeps = []
+        s = Session(quota("GenerateRequestsPerMinutePerProjectPerModel-FreeTier", "37s"),
+                    quota("GenerateRequestsPerMinutePerProjectPerModel-FreeTier", "900s"), gem_ok(good_llm()))
+        w = gemini.GeminiWriter("k", session=s, sleep=sleeps.append, backoff_seconds=2)
+        self.assertIsNotNone(w.write(BRIEF))
+        self.assertEqual(sleeps, [37.0, 60.0])  # what it asked, capped at a minute
+        sleeps.clear()
+        w = gemini.GeminiWriter("k", session=Session(quota("GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+                                                           "3600s")), sleep=sleeps.append)
+        with self.assertRaises(FlashTrendError) as cm:
+            w.write(BRIEF)
+        self.assertEqual((cm.exception.code, sleeps), (E.GEMINI_RATE_LIMIT, []))  # no wait: tomorrow's quota
+
     def test_429_forever_is_rate_limit_error(self):
         s = Session(*[Resp(429)] * 4)
         with self.assertRaises(FlashTrendError) as cm:
