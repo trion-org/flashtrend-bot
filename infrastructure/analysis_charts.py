@@ -27,10 +27,12 @@ from infrastructure.chart import (
     PLATFORM_NAME,
     TEAL,
     TEXT,
+    VIOLET,
     WIDTH_PX,
     clean_label,
     compact,
     frame,
+    gradient_colors,
     shorten,
     to_png,
 )
@@ -152,13 +154,14 @@ class AnalysisCharts:
         counts = [len(v) for v in groups.values()]
         views = [sum(c.video.views for c in v) for v in groups.values()]
         sub = f"{sum(counts)} video · {compact(sum(views))} lượt xem"
-        fig, _ = frame("Tỉ trọng nền tảng", sub, run_id, now)
+        fig, base = frame("Tỉ trọng nền tảng", sub, run_id, now)
+        base.set_axis_off()  # the donuts have their own axes; the frame's would show a 0–1 grid behind them
         for pos, (title, data, total) in enumerate((("Số video", counts, str(sum(counts))),
                                                      ("Lượt xem", views, compact(sum(views))))):
             ax = fig.add_axes([0.08 + pos * 0.45, 0.12, 0.38, 0.62])
             ax.set_axis_off()
             ax.pie(data, colors=[_color(p) for p in groups], startangle=90, counterclock=False,
-                   wedgeprops={"width": 0.36, "edgecolor": BG, "linewidth": 2})
+                   wedgeprops={"width": 0.26, "edgecolor": BG, "linewidth": 3})
             ax.text(0, 0.06, total, ha="center", va="center", fontsize=24, fontweight="bold", color=TEXT)
             ax.text(0, -0.2, title, ha="center", va="center", fontsize=11, color=MUTED)
             share = "  ·  ".join(f"{_name(p)} {v / sum(data):.0%}" for p, v in zip(groups, data, strict=True))
@@ -211,7 +214,8 @@ class AnalysisCharts:
                 grid[row, to_vn(c.video.published_at).hour] += 1
         fig, ax = frame("Giờ đăng (giờ Việt Nam)", "Video thu được theo giờ đăng; ô đậm = nhiều video",
                         run_id, now)
-        ax.imshow(grid, aspect="auto", cmap=LinearSegmentedColormap.from_list("t", [PANEL, ACCENT, TEAL]))
+        heat = LinearSegmentedColormap.from_list("t", [PANEL, "#2c3a9e", VIOLET, TEAL])
+        ax.imshow(grid, aspect="auto", cmap=heat)
         ax.set_xticks(range(24), [f"{h:02d}" for h in range(24)], fontsize=9)
         ax.set_yticks(range(len(groups)), [_name(p) for p in groups], fontsize=11)
         peak = grid.max() or 1
@@ -240,7 +244,7 @@ class AnalysisCharts:
         rows.reverse()
         names = [self._tag_name(tag) for _, tag, _ in rows]
         values = [m for m, _, _ in rows]
-        colors = [_color(statistics.mode(c.video.platform for c in v)) for _, _, v in rows]
+        colors = gradient_colors(len(rows))[::-1]  # the top bar is teal, the bottom one violet
         bars = ax.barh(names, values, color=colors, height=0.62)
         for bar, (m, _, v) in zip(bars, rows, strict=True):
             ax.text(bar.get_width() + max(values) * 0.01, bar.get_y() + bar.get_height() / 2,
@@ -263,16 +267,16 @@ class AnalysisCharts:
         sub = f"{len(points)} lần chạy mới nhất · video thu được và outlier"
         fig, ax = frame("Các lần chạy gần đây", sub, run_id, now)
         _style(ax)
-        ax.plot(xs, [p.collected for p in points], color=ACCENT, linewidth=2.4, marker="o", markersize=4,
+        ax.plot(xs, [p.collected for p in points], color=TEAL, linewidth=2.4, marker="o", markersize=4,
                 label="Video thu được")
-        ax.set_ylabel("Video thu được", color=ACCENT)
+        ax.set_ylabel("Video thu được", color=TEAL)
         twin = ax.twinx()
-        twin.bar(xs, [p.outliers for p in points], width=0.02, color=GOLD, alpha=0.55, label="Outlier")
+        twin.bar(xs, [p.outliers for p in points], width=0.02, color=VIOLET, alpha=0.7, label="Outlier")
         twin.set_facecolor(PANEL)
         twin.patch.set_visible(True)
         ax.set_zorder(twin.get_zorder() + 1)  # the line is drawn over the bars
         ax.patch.set_visible(False)
-        twin.set_ylabel("Outlier", color=GOLD)
+        twin.set_ylabel("Outlier", color=VIOLET)
         twin.tick_params(colors=MUTED, length=0)
         for side in ("top", "right"):
             twin.spines[side].set_visible(False)

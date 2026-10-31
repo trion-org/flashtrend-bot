@@ -20,11 +20,26 @@ from domain.models import Idea
 
 WIDTH_PX, HEIGHT_PX, DPI = 1200, 675, 100
 
-BG, PANEL, TRACK, GRID = "#0b1220", "#111a2e", "#1c2943", "#22304a"
-TEXT, MUTED = "#e8eefb", "#8fa3c2"
-ACCENT, GOLD, TEAL = "#60a5fa", "#fbbf24", "#2dd4bf"
-PLATFORM_COLOR = {"youtube": "#ef4444", "bilibili": "#fb7299"}
+# Power-BI-style dashboard theme: deep navy, slightly lighter panels, and teal → blue → violet accents.
+BG, PANEL, TRACK, GRID = "#0a1022", "#131b33", "#212c4a", "#26324f"
+TEXT, MUTED = "#eaf0ff", "#8d9cc2"
+TEAL, ACCENT, VIOLET, MAGENTA, GOLD = "#2dd4a8", "#4c8dff", "#a77bf3", "#d96cf0", "#f5b841"
+GRADIENT = (TEAL, ACCENT, VIOLET)  # the fill of bars, left to right / top to bottom
+PLATFORM_COLOR = {"youtube": "#ff6b81", "bilibili": "#35c9ee"}
 PLATFORM_NAME = {"youtube": "YouTube", "bilibili": "Bilibili"}
+
+def blend(colors: tuple[str, ...], t: float) -> str:
+    """The colour at fraction ``t`` (0..1) along the ``#rrggbb`` stops ``colors``."""
+    t = min(max(t, 0.0), 1.0) * (len(colors) - 1)
+    i = min(int(t), len(colors) - 2)
+    a, b = (tuple(int(colors[k][j:j + 2], 16) for j in (1, 3, 5)) for k in (i, i + 1))
+    return "#" + "".join(f"{round(x + (y - x) * (t - i)):02x}" for x, y in zip(a, b, strict=True))
+
+
+def gradient_colors(n: int, colors: tuple[str, ...] = GRADIENT) -> list[str]:
+    """``n`` colours spread over the gradient (the first is ``colors[0]``, the last ``colors[-1]``)."""
+    return [blend(colors, i / (n - 1) if n > 1 else 0.0) for i in range(n)]
+
 
 _CJK_FAMILIES = (
     "Noto Sans CJK SC", "Noto Sans CJK JP", "Noto Sans CJK TC", "Noto Sans CJK HK", "Noto Sans SC",
@@ -147,6 +162,30 @@ def pill(ax, x: float, y: float, text: str, color: str, width: float = 92, fg: s
     ax.text(x, y + 0.5, text, color=fg, fontsize=9, fontweight="bold", ha="center", va="center")
 
 
+def gradient_bar(ax, x: float, y: float, width: float, height: float, full_width: float) -> None:
+    """A rounded bar filled with the theme gradient, as much of it as ``width`` out of ``full_width`` shows.
+
+    ``ax`` uses pixel coordinates with y pointing down. The image is clipped to the rounded bar and the
+    axes limits are put back, because ``imshow`` would reset them.
+    """
+    import numpy as np
+    from matplotlib.patches import FancyBboxPatch
+
+    xlim, ylim = ax.get_xlim(), ax.get_ylim()
+    hexes = gradient_colors(64)
+    stops = np.array([[int(c[j:j + 2], 16) for j in (1, 3, 5)] for c in hexes], dtype=float) / 255
+    visible = max(2, round(64 * width / full_width))
+    strip = stops[:visible][None, :, :]
+    shape = FancyBboxPatch((x, y), width, height, boxstyle="round,pad=0,rounding_size=4", fc="none",
+                           ec="none")
+    ax.add_patch(shape)
+    image = ax.imshow(strip, extent=(x, x + width, y + height, y), aspect="auto", interpolation="bilinear",
+                      zorder=3)
+    image.set_clip_path(shape)
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+
+
 class MatplotlibChart:
     """The run's top ideas, ranked in priority order (the niche first), as one shareable card."""
 
@@ -194,7 +233,8 @@ class MatplotlibChart:
                                         boxstyle="round,pad=0,rounding_size=4", fc=TRACK, ec="none"))
             fill = max(10.0, bar_w * c.viral_score / best)
             ax.add_patch(FancyBboxPatch((bar_x, by - 4), fill, 8,
-                                        boxstyle="round,pad=0,rounding_size=4", fc=color, ec="none"))
+                                        boxstyle="round,pad=0,rounding_size=4", fc="none", ec="none"))
+            gradient_bar(ax, bar_x, by - 4, fill, 8, bar_w)
             ax.text(bar_x + bar_w + 14, by, f"{c.viral_score:.1f}", color=TEXT, fontsize=12,
                     fontweight="bold", va="center")
             ax.text(bar_x + bar_w + 14, by - 15, "viral", color=MUTED, fontsize=7.5, va="center")

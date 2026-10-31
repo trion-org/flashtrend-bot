@@ -97,7 +97,7 @@ Giờ không tìm YouTube vẫn đọc Bilibili (không tốn quota), nên danh 
 | 7 | Từ khoá hiệu quả nhất | Từ khoá cho lượt xem trung vị cao |
 | 8 | Các lần chạy gần đây | Số video thu được và outlier theo thời gian |
 
-Biểu đồ không đủ dữ liệu (dưới 5 video, chưa có video dài, mới chạy 1–2 lần) bị bỏ chứ không vẽ rỗng. Ảnh lỗi chỉ mất ảnh đó, không bao giờ làm hỏng run. Runner không có font Hán thì workflow cài `fonts-noto-cjk`.
+Bảng màu theo kiểu dashboard Power BI: nền navy đậm, panel sáng hơn một chút, điểm nhấn teal, xanh dương, tím, vàng hổ phách; thanh biểu đồ chuyển màu teal sang tím, YouTube màu san hô và Bilibili màu cyan. Mã màu nằm ở đầu `infrastructure/chart.py`, đổi một chỗ là đổi cả tám ảnh. Biểu đồ không đủ dữ liệu (dưới 5 video, chưa có video dài, mới chạy 1–2 lần) bị bỏ chứ không vẽ rỗng. Ảnh lỗi chỉ mất ảnh đó, không bao giờ làm hỏng run. Runner không có font Hán thì workflow cài `fonts-noto-cjk`.
 
 ## channels — baseline của kênh {#channels}
 
