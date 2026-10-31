@@ -105,6 +105,7 @@ class Candidate:
     acceleration: float | None = None
     early_flag: bool = False
     passed_z: bool = False
+    z_threshold: float | None = None  # θ of its platform's cohort (the analysis chart draws it)
 
 
 @dataclass

@@ -104,13 +104,17 @@ Giờ không tìm YouTube vẫn đọc Bilibili (không tốn quota), nên danh 
 | Vị trí | Biểu đồ | Đọc để biết |
 | --- | --- | --- |
 | 1 | Video đang hot | Thẻ xếp hạng 8 video ưu tiên cao nhất, huy hiệu nền tảng và ngách |
-| 2 | Lượt xem và z-score | Video nào vượt trội so với nền tảng của nó (vòng vàng) |
-| 3 | Phân bố z-score | Cohort có lệch không, ngưỡng θ từng nền tảng nằm ở đâu |
+| 2 | Tăng trưởng lượt xem của video hot | Lượt xem tăng thêm kể từ lần đo đầu của 3 video hot tăng nhanh nhất, đọc từ `snapshots` (đo mỗi giờ); cuối mỗi đường là số lượt xem mỗi giờ |
+| 3 | Lượt xem và mức vượt kênh | Mỗi chấm là một video: lượt xem và z-score trong nền tảng của nó; vạch đứt là ngưỡng θ thật, vòng vàng là video hot |
 | 4 | Tỉ trọng nền tảng | Bilibili và YouTube chiếm bao nhiêu video và lượt xem |
 | 5 | Thời lượng video | Số video theo nhóm thời lượng; từ 4 giờ trở lên là tuyển tập |
 | 6 | Giờ đăng | Khung giờ đăng nhiều video (giờ Việt Nam) |
 | 7 | Từ khoá hiệu quả nhất | Từ khoá cho lượt xem trung vị cao |
-| 8 | Các lần chạy gần đây | Số video thu được và outlier theo thời gian |
+| 8 | Các lần chạy gần đây | Hai khung chung trục thời gian: số video thu được và số video hot của từng lần chạy |
+
+Mỗi biểu đồ tự giải thích cho người không quen thống kê: dòng phụ đề trong ảnh nói một điểm, một cột hay một đường nghĩa là gì; `caption` (hiện dưới ảnh trong Telegram) có tên biểu đồ, cách đọc và điều lần chạy này cho thấy, ví dụ video tăng nhanh nhất và bao nhiêu lượt mỗi giờ. Số được viết kiểu Việt (1,2 triệu, 45 nghìn).
+
+Biểu đồ phân bố z-score đã bỏ (31/10/2026): người đọc không rút ra được việc cần làm, và vạch "ngưỡng" của nó thật ra là z thấp nhất trong nhóm đã vượt, không phải θ. Không biểu đồ nào dùng hai trục dọc: hai đại lượng khác thang được vẽ thành hai khung. Đường tăng trưởng chỉ vẽ 3 video vì ba màu xanh dương, cam, xanh ngọc là bộ lớn nhất vẫn phân biệt được với mọi người đọc, kể cả người mù màu, trên nền panel.
 
 Bảng màu theo kiểu dashboard Power BI: nền navy đậm, panel sáng hơn một chút, điểm nhấn teal, xanh dương, tím, vàng hổ phách; thanh biểu đồ chuyển màu teal sang tím, YouTube màu san hô và Bilibili màu cyan. Mã màu nằm ở đầu `infrastructure/chart.py`, đổi một chỗ là đổi cả tám ảnh. Biểu đồ không đủ dữ liệu (dưới 5 video, chưa có video dài, mới chạy 1–2 lần) bị bỏ chứ không vẽ rỗng. Ảnh lỗi chỉ mất ảnh đó, không bao giờ làm hỏng run. Runner không có font Hán thì workflow cài `fonts-noto-cjk`.
 

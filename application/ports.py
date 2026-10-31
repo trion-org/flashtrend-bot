@@ -112,8 +112,10 @@ class AnalysisRenderer(Protocol):
         candidates: list[Candidate],
         ideas: list[Idea],
         history: list[RunPoint],
+        growth: dict[str, list[PreviousSnapshot]] | None = None,
     ) -> list[AnalysisImage]:
-        """Every analysis chart the data can support (a chart with too little data is left out)."""
+        """Every analysis chart the data can support (a chart with too little data is left out);
+        ``history`` = the last runs, this one last; ``growth`` = the hot videos' earlier snapshots."""
 
 
 class DigestStore(Protocol):

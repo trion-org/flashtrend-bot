@@ -22,6 +22,7 @@ from application.ports import (
     IdeaBrief,
     IdeaWriter,
     ImageHost,
+    RunPoint,
     VideoSource,
 )
 from domain import errors as E
@@ -57,6 +58,7 @@ HOT_LIST_SIZE = 10  # hot_videos rows per run
 HOT_SPARE = 5  # extra candidates checked, to fill the list when a checked video turns out too short
 CARD_SIZE = 8  # videos on the top card
 HISTORY_RUNS = 48  # past runs on the timeline chart
+GROWTH_POINTS = 72  # earlier snapshots per hot video on the growth chart (three days of hourly runs)
 
 
 @dataclass
@@ -235,7 +237,9 @@ class RunDigest:
             self._store.insert_ideas(run_id, ideas)
 
         picks = self._hot(run_id, config, now, candidates, channels, niche)
-        chart_media_id = self._images(run_id, config, now, candidates, ideas, picks)
+        # this run on the timeline, counted like the stored ones (videos collected, not only those scored)
+        current = RunPoint(now, stats.collected, stats.outliers, len(ideas))
+        chart_media_id = self._images(run_id, config, now, candidates, ideas, picks, current)
         return ideas, chart_media_id
 
     def _baselines(self, videos: list[VideoSnapshot], now: datetime) -> dict[str, Channel]:
@@ -298,6 +302,7 @@ class RunDigest:
                     velocity=vel,
                     acceleration=acc,
                     passed_z=z >= theta,
+                    z_threshold=theta,
                 )
             )
         velocities = [c.velocity for c in candidates if c.velocity is not None]
@@ -494,6 +499,7 @@ class RunDigest:
         candidates: list[Candidate],
         ideas: list[Idea],
         picks: list[Idea],
+        current: RunPoint | None = None,
     ) -> str | None:
         """The top card and the analysis charts → image host → ``media``. Never fails the run (docs/07)."""
         if not (self._image_host and (self._chart or self._analysis) and picks):
@@ -519,8 +525,16 @@ class RunDigest:
             except Exception as exc:  # noqa: BLE001 - only the timeline chart needs it
                 self._obs.warn(f"{run_id}: run history unavailable ({type(exc).__name__}: {exc})")
                 history = []
+            hot = [c.video.id for c in candidates if c.passed_z]
             try:
-                images = self._analysis.render(run_id, now, candidates, ideas, history)
+                growth = self._store.previous_snapshots(hot, now, GROWTH_POINTS) if hot else {}
+            except Exception as exc:  # noqa: BLE001 - only the growth chart needs them
+                self._obs.warn(f"{run_id}: snapshots for the growth chart unavailable "
+                               f"({type(exc).__name__}: {exc})")
+                growth = {}
+            try:
+                points = [*history, current] if current else history
+                images = self._analysis.render(run_id, now, candidates, ideas, points, growth)
             except Exception as exc:  # noqa: BLE001
                 self._obs.warn(f"{run_id}: analysis charts skipped ({type(exc).__name__}: {exc})")
                 images = []

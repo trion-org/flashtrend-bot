@@ -389,5 +389,49 @@ class ChartTest(unittest.TestCase):
         self.assertIsNone(MatplotlibChart().render("r", []))
 
 
+class AnalysisChartsRenderTest(unittest.TestCase):
+    """The real charts, drawn from one fake run: what goes out and what each caption tells the reader."""
+
+    @staticmethod
+    def run_and_render(prev_hours=(3, 2, 1)):
+        from application.digest import RunDigest
+        from domain.models import PreviousSnapshot
+        from infrastructure.analysis_charts import AnalysisCharts
+        from tests.fakes import FakeEmbedder, FakeSource, FakeWriter
+
+        store = FakeStore()
+        result = RunDigest(store, FakeSource(), FakeEmbedder(), FakeWriter(), clock=lambda: NOW).run()
+        hot = [c for c in store.candidates if c.passed_z]
+        growth = {c.video.id: [PreviousSnapshot(c.video.views - 900 * h * (k + 1), NOW - timedelta(hours=h))
+                               for h in prev_hours] for k, c in enumerate(hot)}
+        return hot, AnalysisCharts().render(result.run_id, NOW, store.candidates, result.ideas, [], growth)
+
+    def test_the_growth_chart_replaces_the_z_score_distribution(self):
+        hot, images = self.run_and_render()
+        self.assertTrue(hot)
+        slugs = [(img.position, img.slug) for img in images]
+        self.assertIn((2, "growth"), slugs)
+        self.assertNotIn("zscore", [s for _, s in slugs])
+        self.assertTrue(all(img.png.startswith(b"\x89PNG") for img in images))
+        growth = next(img for img in images if img.slug == "growth")
+        self.assertTrue(growth.caption.startswith("Tăng trưởng lượt xem của video hot\n"))
+        self.assertIn("lượt/giờ", growth.caption)  # this run's fastest video, in plain words
+
+    def test_no_earlier_snapshot_no_growth_chart(self):
+        _, images = self.run_and_render(prev_hours=())
+        self.assertNotIn("growth", [img.slug for img in images])
+
+    def test_every_caption_says_how_to_read_the_chart_and_what_this_run_shows(self):
+        hot, images = self.run_and_render()
+        for img in images:
+            title, how, now = img.caption.split("\n")
+            self.assertTrue(title and len(how) > 80, img.slug)
+            self.assertTrue(now.startswith(("Lượt này", "Lần này", "Nhanh nhất")), img.slug)
+            self.assertLessEqual(len(img.caption), 1000)  # a Telegram photo caption
+        scatter = next(img for img in images if img.slug == "scatter")
+        theta = f"{hot[0].z_threshold:g}".replace(".", ",")  # 5 videos: the relaxed θ
+        self.assertIn(f"ngưỡng hot ({theta})", scatter.caption)  # the real θ, not the lowest z that passed
+
+
 if __name__ == "__main__":
     unittest.main()

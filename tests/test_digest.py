@@ -197,10 +197,11 @@ class FakeAnalysis:
     def __init__(self, error=None):
         self.error, self.calls = error, []
 
-    def render(self, run_id, now, candidates, ideas, history):
+    def render(self, run_id, now, candidates, ideas, history, growth=None):
         from application.ports import AnalysisImage
 
         self.calls.append((len(candidates), len(history)))
+        self.history, self.growth = history, growth
         if self.error:
             raise self.error
         return [AnalysisImage(f"c{n}", f"Biểu đồ {n}", n, b"\x89PNG-%d" % n, 10, 5) for n in (2, 3)]
@@ -215,7 +216,7 @@ class AnalysisChartsTest(unittest.TestCase):
         self.assertEqual([(m.kind, m.position, m.caption) for m in rows],
                          [("analysis", 1, "Video đang hot"), ("analysis", 2, "Biểu đồ 2"), ("analysis", 3, "Biểu đồ 3")])
         self.assertTrue(all(m.run_id == RUN_ID and m.owner == "flashtrend" for m in rows))
-        self.assertEqual(analysis.calls, [(5, 0)])  # all scored candidates, no run history yet
+        self.assertEqual(analysis.calls, [(5, 1)])  # all scored candidates; no stored run yet, only this one
 
     def test_the_timeline_gets_the_stored_run_history(self):
         from application.ports import RunPoint
@@ -223,8 +224,18 @@ class AnalysisChartsTest(unittest.TestCase):
         store = FakeStore()
         store.history = [RunPoint(NOW - timedelta(hours=h), 100, 5, 1) for h in (3, 2, 1)]
         analysis = FakeAnalysis()
-        make(store=store, host=FakeImageHost(), analysis=analysis)[0].run()
-        self.assertEqual(analysis.calls[0][1], 3)
+        uc = make(store=store, host=FakeImageHost(), analysis=analysis)[0]
+        uc.run()
+        self.assertEqual(analysis.calls[0][1], 4)  # the stored runs, then this one
+        self.assertEqual(analysis.history[-1].collected, len(store.snapshots))  # counted like the stored ones
+
+    def test_the_growth_chart_gets_the_hot_videos_earlier_snapshots(self):
+        store, analysis = FakeStore(), FakeAnalysis()
+        uc, _, _ = make(store=store, host=FakeImageHost(), analysis=analysis)
+        uc.run()
+        passed = {c.video.id for c in store.candidates if c.passed_z}
+        self.assertTrue(passed)
+        self.assertEqual(set(analysis.growth), passed)  # only the hot videos are looked up
 
     def test_a_crashing_renderer_only_loses_the_charts(self):
         uc, store, obs = make(host=FakeImageHost(), analysis=FakeAnalysis(RuntimeError("matplotlib")))
