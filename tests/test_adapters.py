@@ -52,7 +52,7 @@ def gem_ok(obj):
 
 class GeminiTitlesTest(unittest.TestCase):
     def test_titles_come_back_in_order_and_a_skipped_one_is_none(self):
-        s = Session(gem_ok({"titles": [{"i": 2, "vi": "Phàm Nhân Tu Tiên  mùa 2"}, {"i": 1, "vi": "Xem một lèo"},
+        s = Session(gem_ok({"titles": [{"i": 2, "vi": "Phàm Nhân Tu Tiên  mùa 2."}, {"i": 1, "vi": "Xem một lèo"},
                                        {"i": 9, "vi": "out of range"}]}))
         t = gemini.GeminiTitles("SECRET-KEY", session=s, sleep=lambda s: None)
         self.assertEqual(t.translate(["一口气看完", "凡人修仙传 第二季", "灵笼"]),

@@ -176,7 +176,7 @@ def build_titles_prompt(titles: list[str]) -> str:
         "Tiên, 斗破苍穹 → Đấu Phá Thương Khung, 萧炎 → Tiêu Viêm\n"
         "- 第二季 → Mùa 2, 1~26集 → Tập 1–26, 合集 → Tuyển tập, 完结 → Trọn bộ, 一口气看完 → Xem một lèo\n"
         "- drop emoji, hashtags and decorative brackets but keep what they say: 【抢先看】 → (Xem trước)\n"
-        "- a title already in Vietnamese stays as it is\n"
+        "- a title already in Vietnamese stays as it is; no full stop at the end (it is a title)\n"
         'Return {"titles": [{"i": <its number>, "vi": "<Vietnamese>"}]} with one item per title.\n\n'
         f"<titles>\n{listed}\n</titles>"
     )
@@ -211,7 +211,7 @@ def parse_titles(body: object, n: int) -> list[str | None]:
             continue
         i, vi = item.get("i"), item.get("vi")
         if isinstance(i, int) and 1 <= i <= n and isinstance(vi, str) and vi.strip():
-            got[i - 1] = _cap(" ".join(vi.split()))
+            got[i - 1] = _cap(" ".join(vi.split()).rstrip(".。"))
     return got
 
 
