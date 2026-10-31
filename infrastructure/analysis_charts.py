@@ -162,7 +162,7 @@ class AnalysisCharts:
             ys = [v - points[0][1] for _, v in points]
             ax.plot(xs, ys, color=color, linewidth=2, marker="o", markersize=6, markeredgecolor=PANEL,
                     markeredgewidth=1.5, label=(f"{_name(c.video.platform)} · "
-                                                f"{shorten(clean_label(c.video.title), 34)}"))
+                                                f"{shorten(clean_label(c.shown_title), 34)}"))
             ends.append((ys[-1], xs[-1], f"+{_num(rate)}/giờ"))
         top = max(max(y for y, _, _ in ends), 1)
         ax.set_ylim(0, top * 1.25)
@@ -189,7 +189,7 @@ class AnalysisCharts:
             "đường càng dốc là video càng đang hút người xem,",
             "đường đi ngang là video đã chững lại.",
             "Con số cuối mỗi đường là tốc độ trung bình (lượt xem mỗi giờ)." + more,
-        )) + (f"\nNhanh nhất lượt này: {shorten(clean_label(c.video.title), 40)} "
+        )) + (f"\nNhanh nhất lượt này: {shorten(clean_label(c.shown_title), 40)} "
               f"({_name(c.video.platform)}) — "
               f"+{_num(gained)} lượt xem trong {hours:.0f} giờ, khoảng {_num(rate)} lượt/giờ.")
         return fig, note
@@ -212,7 +212,7 @@ class AnalysisCharts:
         middle = statistics.geometric_mean([c.video.views for c in usable])
         for c in sorted(out, key=lambda c: -c.viral_score)[:3]:
             right_half = c.video.views > middle  # labels of the right half grow leftwards, inside the panel
-            ax.annotate(shorten(clean_label(c.video.title), 26), (c.video.views, c.z_score),
+            ax.annotate(shorten(clean_label(c.shown_title), 26), (c.video.views, c.z_score),
                         xytext=(-10 if right_half else 10, -16), textcoords="offset points",
                         ha="right" if right_half else "left", color=TEXT, fontsize=9)
         thresholds = {c.video.platform: c.z_threshold for c in usable if c.z_threshold is not None}
@@ -230,7 +230,7 @@ class AnalysisCharts:
         _legend(ax, loc="upper left")
         theta = " / ".join(f"{_decimal(t)}" for t in sorted(lines)) or "θ"
         best = max(out, key=lambda c: c.z_score, default=None)
-        top = (f"; cao nhất {shorten(clean_label(best.video.title), 40)} "
+        top = (f"; cao nhất {shorten(clean_label(best.shown_title), 40)} "
                f"(z +{_decimal(round(best.z_score, 1))}, "
                f"{_num(best.video.views)} lượt xem)." if best else ".")
         note = " ".join((

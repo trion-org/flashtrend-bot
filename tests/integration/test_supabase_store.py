@@ -169,6 +169,21 @@ class SupabaseStoreIntegrationTest(unittest.TestCase):
         self.assertEqual(db.table("media").select("id").eq("id", chart.id).execute().data, [])
         self.assertEqual(len(db.table("media").select("id").eq("id", "img_" + "ab" * 8).execute().data), 1)
 
+    def test_09_title_translations_round_trip_and_ride_on_the_hot_list(self):
+        self.store.upsert_titles_vi([("sha256:aa", "凡人修仙传", "Phàm Nhân Tu Tiên"), ("sha256:bb", "灵笼", "Linh Lung")])
+        self.store.upsert_titles_vi([("sha256:aa", "凡人修仙传", "Phàm Nhân Tu Tiên (mới)")])  # same title: replaced
+        self.assertEqual(self.store.get_titles_vi(["sha256:aa", "sha256:bb", "sha256:zz"]),
+                         {"sha256:aa": "Phàm Nhân Tu Tiên (mới)", "sha256:bb": "Linh Lung"})
+        r = self.run_digest(clock_offset_h=41)
+        self.store.insert_hot_videos(r.run_id, [
+            HotVideo("series", 1, "bi_ss1", "bilibili", "灵笼", "https://www.bilibili.com/bangumi/play/ss1", None,
+                     9, None, None, True, 0.0, title_vi="Linh Lung"),
+            HotVideo("series", 2, "bi_ss2", "bilibili", "牧神记", "https://www.bilibili.com/bangumi/play/ss2", None,
+                     8, None, None, True, 0.0),
+        ])
+        rows = self.store._db.table("hot_videos").select("rank,title_vi").eq("run_id", r.run_id).order("rank").execute()
+        self.assertEqual(rows.data, [{"rank": 1, "title_vi": "Linh Lung"}, {"rank": 2, "title_vi": None}])
+
 
 if __name__ == "__main__":
     unittest.main()

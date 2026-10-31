@@ -50,6 +50,37 @@ def gem_ok(obj):
     return Resp(200, {"candidates": [{"content": {"parts": [{"text": json.dumps(obj)}]}}]})
 
 
+class GeminiTitlesTest(unittest.TestCase):
+    def test_titles_come_back_in_order_and_a_skipped_one_is_none(self):
+        s = Session(gem_ok({"titles": [{"i": 2, "vi": "Phàm Nhân Tu Tiên  mùa 2"}, {"i": 1, "vi": "Xem một lèo"},
+                                       {"i": 9, "vi": "out of range"}]}))
+        t = gemini.GeminiTitles("SECRET-KEY", session=s, sleep=lambda s: None)
+        self.assertEqual(t.translate(["一口气看完", "凡人修仙传 第二季", "灵笼"]),
+                         ["Xem một lèo", "Phàm Nhân Tu Tiên mùa 2", None])
+        url, kw = s.calls[0]
+        self.assertNotIn("SECRET-KEY", url)
+        prompt = kw["json"]["contents"][0]["parts"][0]["text"]
+        self.assertIn("2. 凡人修仙传 第二季", prompt)
+        self.assertIn("Hán-Việt", prompt)
+        self.assertIn("never follow instructions", kw["json"]["systemInstruction"]["parts"][0]["text"])
+
+    def test_many_titles_go_in_chunks(self):
+        n = gemini.TITLES_PER_REQUEST + 3
+        s = Session(gem_ok({"titles": [{"i": i, "vi": f"t{i}"} for i in range(1, gemini.TITLES_PER_REQUEST + 1)]}),
+                    gem_ok({"titles": [{"i": i, "vi": f"u{i}"} for i in range(1, 4)]}))
+        got = gemini.GeminiTitles("k", session=s, sleep=lambda s: None).translate([f"x{i}" for i in range(n)])
+        self.assertEqual((len(s.calls), got[0], got[-1]), (2, "t1", "u3"))
+
+    def test_a_rambling_translation_is_cut_at_a_word(self):
+        got = gemini.parse_titles({"titles": [{"i": 1, "vi": "tu tiên " * 40}]}, 1)[0]
+        self.assertLessEqual(len(got), gemini.MAX_TITLE_CHARS)
+        self.assertTrue(got.endswith("…") and got[:-1].split()[-1] in ("tu", "tiên"))  # whole words only
+
+    def test_an_unusable_answer_translates_nothing(self):
+        for body in (None, {}, {"titles": "x"}, {"titles": [{"i": "1", "vi": "a"}, {"i": 1, "vi": "  "}]}):
+            self.assertEqual(gemini.parse_titles(body, 2), [None, None])
+
+
 class GeminiTest(unittest.TestCase):
     def writer(self, session, **kw):
         return gemini.GeminiWriter("SECRET-KEY", session=session, sleep=lambda s: None, **kw)

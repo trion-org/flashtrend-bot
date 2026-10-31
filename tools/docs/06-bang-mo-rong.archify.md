@@ -177,3 +177,16 @@ alter table app_config add constraint app_config_search_window_hours_check
 | `app_config.niche_only` | Bỏ video không thuộc ngách trước khi chấm điểm |
 | `app_config.niche_exclude_terms` | Tiêu đề có từ này thì không thuộc ngách (khoá học, thuyết minh) |
 | `app_config.analysis_every_hours` | Vẽ và upload biểu đồ chỉ khi giờ chia hết N: giữ tải của image host |
+
+**Tên video tiếng Việt.** Mỗi lần chạy dịch sang tiếng Việt tên các video người đọc sẽ gặp: danh sách hot, series, thẻ "Video đang hot" và các video hot trên biểu đồ. Gemini dịch một lần cho mỗi tên (tên tác phẩm, nhân vật theo Hán-Việt, ví dụ 凡人修仙传 → Phàm Nhân Tu Tiên), bản dịch lưu trong `titles_vi` theo sha256 của tên gốc nên lần sau không hỏi lại. `hot_videos.title_vi` mang bản dịch để estfstudio hiện mà không cần join; biểu đồ vẽ tên tiếng Việt. Dịch lỗi thì vẫn hiện tên gốc, không làm hỏng run; `--dry-run` không dịch.
+
+```sql title="Migration 08 — tên video tiếng Việt"
+create table if not exists titles_vi (
+  title_hash text primary key,                             -- 'sha256:' + sha256 of the original title
+  title text not null,
+  title_vi text not null,
+  created_at timestamptz not null default now()
+);
+alter table titles_vi enable row level security;
+alter table hot_videos add column if not exists title_vi text;   -- null = not translated: show title
+```

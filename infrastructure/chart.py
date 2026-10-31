@@ -223,7 +223,7 @@ class MatplotlibChart:
             ax.add_patch(Circle((70, y + row_h / 2), 20, fc=color, ec="none"))
             ax.text(70, y + row_h / 2 + 1, str(n + 1), color=BG, fontsize=15, fontweight="bold", ha="center",
                     va="center")
-            title = shorten(clean_label(v.title) or v.native_id, 56)
+            title = shorten(clean_label(c.shown_title) or v.native_id, 56)
             ax.text(bar_x, y + row_h * 0.30, title, color=TEXT, fontsize=14, fontweight="bold", va="center")
             views, age = compact(v.views), age_text(v.age_hours)
             meta = clean_label(f"{idea.channel_title} · {views} lượt xem · {age} · z {c.z_score:+.1f}")

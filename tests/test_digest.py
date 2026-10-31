@@ -256,6 +256,44 @@ class AnalysisChartsTest(unittest.TestCase):
         self.assertEqual(len(analysis.calls), 2)
 
 
+class FakeTranslator:
+    def __init__(self, error=None):
+        self.error, self.asked = error, []
+
+    def translate(self, titles):
+        self.asked.append(list(titles))
+        if self.error:
+            raise self.error
+        return [f"VI {t}" for t in titles]
+
+
+class TitleTranslationTest(unittest.TestCase):
+    def test_the_hot_list_card_and_hot_videos_carry_their_titles_in_vietnamese_translated_once(self):
+        store, translator = FakeStore(), FakeTranslator()
+        make(store=store, translator=translator)[0].run()
+        self.assertEqual(len(translator.asked), 1)  # one request for the whole run
+        hot = [c for c in store.candidates if c.passed_z]
+        self.assertTrue(hot and all(c.title_vi == f"VI {c.video.title}" for c in hot))
+        self.assertEqual(hot[0].shown_title, f"VI {hot[0].video.title}")
+        rows = [r for rows in store.hot_videos.values() for r in rows]
+        self.assertTrue(all(r.title_vi == f"VI {r.title}" for r in rows))
+        again = FakeTranslator()
+        make(store=store, translator=again)[0].run()
+        self.assertEqual(again.asked, [])  # every title already stored
+
+    def test_a_failing_translator_leaves_the_original_titles(self):
+        store = FakeStore()
+        uc, _, obs = make(store=store, translator=FakeTranslator(RuntimeError("quota")))
+        self.assertEqual(uc.run().status, "ok")
+        self.assertTrue(all(c.title_vi is None and c.shown_title == c.video.title for c in store.candidates))
+        self.assertTrue(any("titles not translated" in line for line in obs.lines))
+
+    def test_without_a_translator_nothing_is_asked(self):
+        store = FakeStore()
+        make(store=store)[0].run()
+        self.assertFalse(getattr(store, "titles_vi", {}))
+
+
 class HotListTest(unittest.TestCase):
     @staticmethod
     def bilibili_pair(n=12):

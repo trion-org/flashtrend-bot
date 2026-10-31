@@ -464,10 +464,31 @@ class SupabaseStore:
                 "views": h.views, "duration_sec": h.duration_sec,
                 "published_at": iso(h.published_at) if h.published_at else None, "niche": h.niche,
                 "viral_score": h.viral_score, "parts": h.parts, "first_part_sec": h.first_part_sec,
+                "title_vi": h.title_vi,
             }
             for h in rows
         ]
         self._write("insert hot videos", lambda: self._db.table("hot_videos").insert(payload).execute())
+
+    def get_titles_vi(self, title_hashes: list[str]) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for chunk in _chunks(title_hashes, READ_CHUNK):
+            rows = self._write(
+                "read title translations",
+                lambda c=chunk: self._rows(
+                    self._db.table("titles_vi").select("title_hash,title_vi").in_("title_hash", c).execute()
+                ),
+            )
+            out.update({r["title_hash"]: r["title_vi"] for r in rows if r.get("title_vi")})
+        return out
+
+    def upsert_titles_vi(self, rows: list[tuple[str, str, str]]) -> None:
+        payload = [{"title_hash": h, "title": t, "title_vi": vi} for h, t, vi in rows]
+        for chunk in _chunks(payload, WRITE_CHUNK):
+            self._write(
+                "store title translations",
+                lambda c=chunk: self._db.table("titles_vi").upsert(c, on_conflict="title_hash").execute(),
+            )
 
     def recent_runs(self, limit: int) -> list[RunPoint]:
         rows = self._write(

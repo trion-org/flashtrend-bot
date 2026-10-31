@@ -106,6 +106,12 @@ class Candidate:
     early_flag: bool = False
     passed_z: bool = False
     z_threshold: float | None = None  # θ of its platform's cohort (the analysis chart draws it)
+    title_vi: str | None = None  # the title in Vietnamese, for the charts (None = not translated)
+
+    @property
+    def shown_title(self) -> str:
+        """What a Vietnamese reader sees: the translated title, else the original."""
+        return self.title_vi or self.video.title
 
 
 @dataclass
@@ -189,6 +195,7 @@ class HotVideo:
     viral_score: float
     parts: int | None = None  # parts (分P) of the video, None = not checked; duration_sec is their total
     first_part_sec: int | None = None  # what the player opens on: part 1
+    title_vi: str | None = None  # the title in Vietnamese (None = not translated)
 
 
 @dataclass(frozen=True)

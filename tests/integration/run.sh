@@ -12,7 +12,7 @@ until docker exec "$PG" pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
 sleep 2
 psql_() { docker exec -i "$PG" psql -U postgres -v ON_ERROR_STOP=1 -q "$@"; }
 psql_ -c "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;"
-for f in sql/01_core.sql sql/02_media.sql sql/03_functions.sql sql/05_search_tuning.sql sql/06_bilibili.sql sql/07_analysis.sql sql/04_seed_app_config.sql; do psql_ < "$f"; done
+for f in sql/01_core.sql sql/02_media.sql sql/03_functions.sql sql/05_search_tuning.sql sql/06_bilibili.sql sql/07_analysis.sql sql/08_titles_vi.sql sql/04_seed_app_config.sql; do psql_ < "$f"; done
 # Supabase grants these by default; a plain Postgres does not
 psql_ -c "grant usage on schema public to anon, authenticated, service_role;
           grant all on all tables in schema public to service_role;

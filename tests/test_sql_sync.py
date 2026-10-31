@@ -54,6 +54,13 @@ class SqlSyncTest(unittest.TestCase):
         self.assertIn("alter table hot_videos enable row level security", migration)
         self.assertNotIn("create policy", migration)
 
+    def test_migration_08_is_the_docs_block(self):
+        block = next(v for k, v in doc_blocks("06-bang-mo-rong.archify.md").items() if k.startswith("Migration 08"))
+        migration = (ROOT / "sql/08_titles_vi.sql").read_text(encoding="utf-8")
+        self.assertIn(block, migration)
+        self.assertIn("alter table titles_vi enable row level security", migration)
+        self.assertRegex(migration, r"alter table hot_videos add column if not exists title_vi ")
+
     def test_cleanup_is_safe_on_a_database_without_migration_07(self):
         sql = (ROOT / "sql/03_functions.sql").read_text(encoding="utf-8")
         self.assertIn("exception when undefined_table", sql)  # no hot_videos table yet

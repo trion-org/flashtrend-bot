@@ -10,7 +10,7 @@ import hashlib
 import statistics
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 
 from application.observer import NullObserver, Observer
@@ -23,6 +23,7 @@ from application.ports import (
     IdeaWriter,
     ImageHost,
     RunPoint,
+    TitleTranslator,
     VideoSource,
 )
 from domain import errors as E
@@ -86,8 +87,10 @@ class RunDigest:
         git_sha: str = "local",
         trigger: str = "workflow_dispatch",
         sleep: Callable[[float], None] = time.sleep,
+        translator: TitleTranslator | None = None,
     ) -> None:
         self._store = store
+        self._translator = translator
         self._source = source
         self._embedder = embedder
         self._writer = writer
@@ -419,6 +422,12 @@ class RunDigest:
             for i, c in enumerate(shown[:HOT_LIST_SIZE], start=1)
         ]
         rows += self._series_rows(run_id, config, now)
+        # every title a Vietnamese reader meets — the hot list, the card, the charts' hot videos — translated
+        cards, hot = ranked[:CARD_SIZE], [c for c in candidates if c.passed_z]
+        vi = self._titles_vi(run_id, [r.title for r in rows] + [c.video.title for c in (*cards, *hot)])
+        rows = [replace(r, title_vi=vi.get(r.title)) for r in rows]
+        for c in candidates:
+            c.title_vi = vi.get(c.video.title)
         if rows:
             try:
                 self._store.insert_hot_videos(run_id, rows)
@@ -439,6 +448,37 @@ class RunDigest:
             c.video.views, total, c.video.published_at, in_niche, c.viral_score,
             parts=len(parts) if parts else None, first_part_sec=parts[0] if parts else None,
         )
+
+    def _titles_vi(self, run_id: str, titles: list[str]) -> dict[str, str]:
+        """``{title: Vietnamese}``: the stored translations, the rest asked of the translator in one go and
+        stored, so a title is translated once. Never fails the run — an untranslated title shows as it is."""
+        wanted = list(dict.fromkeys(t for t in titles if t and t.strip()))
+        if not wanted:
+            return {}
+        keys = {t: _text_hash(t) for t in wanted}
+        try:
+            known = self._store.get_titles_vi(list(keys.values()))
+        except Exception as exc:  # noqa: BLE001 - sql/08 not applied yet, or a blip
+            self._obs.warn(f"{run_id}: stored title translations unavailable ({type(exc).__name__}: {exc})")
+            known = {}
+        out = {t: known[k] for t, k in keys.items() if k in known}
+        ask = [t for t in wanted if t not in out]
+        if not ask or self._translator is None:
+            return out
+        try:
+            got = self._translator.translate(ask)
+        except Exception as exc:  # noqa: BLE001 - the original titles still read
+            self._obs.warn(f"{run_id}: titles not translated ({type(exc).__name__}: {exc})")
+            return out
+        new = [(keys[t], t, vi.strip()) for t, vi in zip(ask, got, strict=False) if vi and vi.strip()]
+        out.update({t: vi for _, t, vi in new})
+        if new:
+            try:
+                self._store.upsert_titles_vi(new)
+            except Exception as exc:  # noqa: BLE001 - asked again next run
+                self._obs.warn(f"{run_id}: title translations not stored ({type(exc).__name__}: {exc})")
+        self._obs.info(f"{run_id}: {len(new)} title(s) translated to Vietnamese, {len(out) - len(new)} known")
+        return out
 
     def _verified_parts(self, run_id: str, video_ids: list[str]) -> dict[str, list[int]]:
         """Part lengths of the hot-list candidates; {} when the source cannot answer (rows stay unchecked)."""

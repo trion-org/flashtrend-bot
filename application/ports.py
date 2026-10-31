@@ -75,6 +75,11 @@ class IdeaWriter(Protocol):
         """Raw JSON object from the LLM (validated by the use case, which retries once)."""
 
 
+class TitleTranslator(Protocol):
+    def translate(self, titles: list[str]) -> list[str | None]:
+        """Each title in Vietnamese, in order; None where it gave none."""
+
+
 class ImageHost(Protocol):
     def upload(self, png: bytes, filename: str) -> str:
         """POST the image, return its public URL."""
@@ -169,6 +174,12 @@ class DigestStore(Protocol):
 
     def recent_runs(self, limit: int) -> list[RunPoint]:
         """Newest ``limit`` finished runs, oldest first."""
+
+    def get_titles_vi(self, title_hashes: list[str]) -> dict[str, str]:
+        """``{title hash: Vietnamese}`` of the titles translated before."""
+
+    def upsert_titles_vi(self, rows: list[tuple[str, str, str]]) -> None:
+        """Rows are ``(title hash, title, Vietnamese)``."""
 
     def insert_ideas(self, run_id: str, ideas: list[Idea]) -> None: ...
 

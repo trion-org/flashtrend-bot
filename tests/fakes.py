@@ -252,6 +252,15 @@ class FakeStore:
     def recent_runs(self, limit):
         return list(self.history)[-limit:]
 
+    def get_titles_vi(self, title_hashes):
+        titles = getattr(self, "titles_vi", {})
+        return {h: titles[h][1] for h in title_hashes if h in titles}
+
+    def upsert_titles_vi(self, rows):
+        if not hasattr(self, "titles_vi"):
+            self.titles_vi = {}
+        self.titles_vi.update({h: (t, vi) for h, t, vi in rows})
+
     def find_media(self, sha256):
         return next((m for m in self.media.values() if m.sha256 == sha256), None)
 
