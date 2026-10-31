@@ -57,12 +57,16 @@ def median_raw_engagement(
     return statistics.median(raw_engagement(v, li, c, like_w, comment_w) for v, li, c in rows)
 
 
-def niche_match(title: str, description: str, terms: Sequence[str]) -> bool:
-    """Whether a video belongs to the niche: one of ``terms`` in its title or description.
+def niche_match(title: str, description: str, terms: Sequence[str], exclude: Sequence[str] = ()) -> bool:
+    """Whether a video belongs to the niche: one of ``terms`` in its title or description, and none of
+    ``exclude`` in its title (a description often advertises a course even on a real film).
 
     Matching is a case-insensitive substring, so it works for Chinese (no word boundaries) as well.
     """
-    text = f"{title}\n{description}".lower()
+    lowered = title.lower()
+    if any(t and t.lower() in lowered for t in exclude):
+        return False
+    text = f"{lowered}\n{description.lower()}"
     return any(t and t.lower() in text for t in terms)
 
 

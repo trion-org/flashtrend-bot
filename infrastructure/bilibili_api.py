@@ -37,6 +37,9 @@ CHANNEL_CACHE = timedelta(hours=24)
 DESCRIPTION_MAX_CHARS = 500
 SEARCH_URL = "https://api.bilibili.com/x/web-interface/search/type"
 CARD_URL = "https://api.bilibili.com/x/web-interface/card"
+#: Bilibili's ``duration`` search filter: 4 = longer than 60 minutes
+LONG_DURATION_CODE = 4
+LONG_FROM_SEC = 3600  # a minimum this long makes the search ask for ``duration=4``
 SERIES_URL = "https://api.bilibili.com/pgc/web/rank/list"
 BREAKER_AFTER = 3  # consecutive blocked requests after which the rest of the run stops asking
 HEADERS = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)", "Referer": "https://www.bilibili.com/"}
@@ -105,15 +108,22 @@ class BilibiliSource:
 
     # ----------------------------------------------------------------- search
 
-    def collect(self, keywords: tuple[str, ...], now: datetime, window_hours: int) -> list[VideoSnapshot]:
+    def collect(self, keywords: tuple[str, ...], now: datetime, window_hours: int,
+                min_duration_sec: int = 0) -> list[VideoSnapshot]:
+        """Most-played videos per keyword. With ``min_duration_sec`` of an hour or more the search itself asks
+        for ``duration=4`` (over 60 minutes), so its results are the long ones, and reads 2 pages."""
         found: dict[str, VideoSnapshot] = {}
+        long_only = min_duration_sec >= LONG_FROM_SEC
         end = int(now.timestamp())
         begin = int((now - timedelta(hours=window_hours)).timestamp())
-        for i, keyword in enumerate(keywords):
+        requests = [(keyword, page) for keyword in keywords for page in range(1, 3 if long_only else 2)]
+        for i, (keyword, page) in enumerate(requests):
             if i:
                 self._sleep(self._pause)
-            params = {"search_type": "video", "keyword": keyword, "order": "click", "page": 1,
+            params = {"search_type": "video", "keyword": keyword, "order": "click", "page": page,
                       "pubtime_begin_s": begin, "pubtime_end_s": end}
+            if long_only:
+                params["duration"] = LONG_DURATION_CODE
             try:
                 data = self._get(SEARCH_URL, params)
             except BilibiliUnavailable as exc:

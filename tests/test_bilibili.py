@@ -70,6 +70,21 @@ class SearchTest(unittest.TestCase):
         self.assertEqual(v.published_at.utcoffset(), timedelta(hours=7))  # Vietnam time
         self.assertAlmostEqual(v.age_hours, 30, delta=0.01)
 
+    def test_a_minimum_of_an_hour_asks_for_long_videos_on_two_pages(self):
+        src, _ = source(ok([item(bvid="BV1")]), ok([item(bvid="BV2")]))
+        got = src.collect(("国漫",), NOW, 48, min_duration_sec=4 * 3600)
+        qs = [parse_qs(urlparse(u).query) for u in src._fetch.urls]
+        self.assertEqual([q["page"] for q in qs], [["1"], ["2"]])
+        self.assertTrue(all(q["duration"] == ["4"] for q in qs))  # Bilibili's "longer than 60 minutes"
+        self.assertEqual([v.native_id for v in got], ["BV1", "BV2"])
+
+    def test_no_minimum_keeps_one_unfiltered_page(self):
+        src, _ = source(ok([]))
+        src.collect(("国漫",), NOW, 48)
+        q = parse_qs(urlparse(src._fetch.urls[0]).query)
+        self.assertNotIn("duration", q)
+        self.assertEqual(len(src._fetch.urls), 1)
+
     def test_the_window_is_sent_as_publication_times(self):
         src, _ = source(ok([]))
         src.collect(("国漫",), NOW, 168)
@@ -149,7 +164,7 @@ class FakeBili:
     def __init__(self, videos=(), warnings=()):
         self.videos, self.warnings, self.calls = list(videos), list(warnings), []
 
-    def collect(self, keywords, now, window_hours):
+    def collect(self, keywords, now, window_hours, min_duration_sec=0):
         self.calls.append((keywords, window_hours))
         return self.videos
 

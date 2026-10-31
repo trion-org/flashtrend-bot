@@ -190,8 +190,10 @@ class RunDigest:
             config.chart_enabled and ask_youtube,
             config.search_window_hours,
             config.bilibili_keywords,
+            config.min_duration_sec,
         )
         stats.collected = len(videos)
+        videos = self._relevant(run_id, videos, config)
         channels = self._baselines(videos, now)
         scorable = [v for v in videos if channels.get(v.channel_id, None) and
                     channels[v.channel_id].channel_avg_views > 0]
@@ -216,7 +218,8 @@ class RunDigest:
         )
 
         niche = {
-            c.video.id: scoring.niche_match(c.video.title, c.video.description, config.niche_terms)
+            c.video.id: scoring.niche_match(c.video.title, c.video.description, config.niche_terms,
+                                            config.niche_exclude_terms)
             for c in candidates
         }
         if config.niche_boost > 1 and any(niche.get(c.video.id) for c in outliers):
@@ -414,6 +417,25 @@ class RunDigest:
             Idea(candidate=c, channel_title=title_of(c), cluster_id="hot", niche=niche.get(c.video.id, False))
             for c in ranked[:CARD_SIZE]
         ]
+
+    def _relevant(self, run_id: str, videos: list[VideoSnapshot], config: AppConfig) -> list[VideoSnapshot]:
+        """Keep only what the feed is about: long enough (a compilation, not a clip) and, if asked, the niche.
+
+        Runs before the channel baselines, so a channel is only looked up for a video that will be scored.
+        """
+        kept = videos
+        if config.min_duration_sec:
+            kept = [v for v in kept if (v.duration_sec or 0) >= config.min_duration_sec]
+        too_short = len(videos) - len(kept)
+        if config.niche_only:
+            kept = [v for v in kept if scoring.niche_match(v.title, v.description, config.niche_terms,
+                                                           config.niche_exclude_terms)]
+        if len(kept) < len(videos):
+            self._obs.info(
+                f"{run_id}: kept {len(kept)} of {len(videos)} video(s): {too_short} shorter than "
+                f"{config.min_duration_sec / 3600:g} h, {len(videos) - too_short - len(kept)} not the niche"
+            )
+        return kept
 
     def _series_rows(self, run_id: str, config: AppConfig, now: datetime) -> list[HotVideo]:
         """Bilibili's live 国创 series ranking as ``kind = series`` rows; never fails the run."""

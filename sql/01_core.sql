@@ -214,5 +214,5 @@ alter table app_config add column relaxed_z_threshold double precision not null 
 alter table runs add column z_threshold_used double precision;
 alter table app_config add column chart_enabled boolean not null default true;
 alter table app_config add column search_window_hours int not null default 48
-  check (search_window_hours between 1 and 720);
+  check (search_window_hours between 1 and 4320);
 alter table app_config add column bilibili_keywords text[] not null default '{}';

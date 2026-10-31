@@ -4,7 +4,8 @@
 --
 -- 1. media can hold analysis charts: a new kind, a Vietnamese caption and a display position
 -- 2. hot_videos: the hottest Bilibili videos and 国创 series of each run, flat (no join), for /analysis
--- 3. app_config: Bilibili series rankings, the niche, and how often the heavy parts run
+-- 3. app_config: Bilibili series rankings, the niche (terms, exclusions, only-the-niche), a minimum duration for
+--    long compilations, a search window of up to 180 days, and how often the heavy parts run
 
 alter type media_kind_t add value if not exists 'analysis';
 alter table media add column if not exists caption text;
@@ -38,3 +39,10 @@ alter table app_config add column if not exists youtube_search_every_hours int n
   check (youtube_search_every_hours between 1 and 24);
 alter table app_config add column if not exists analysis_every_hours int not null default 1
   check (analysis_every_hours between 1 and 24);
+alter table app_config add column if not exists niche_exclude_terms text[] not null default '{}';
+alter table app_config add column if not exists niche_only boolean not null default false;
+alter table app_config add column if not exists min_duration_sec int not null default 0
+  check (min_duration_sec >= 0);
+alter table app_config drop constraint if exists app_config_search_window_hours_check;
+alter table app_config add constraint app_config_search_window_hours_check
+  check (search_window_hours between 1 and 4320);

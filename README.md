@@ -29,6 +29,9 @@ YouTube (chart + keywords + channel baselines) + Bilibili (keyword search, anony
   → Supabase: runs · channels · videos · snapshots · candidates · embeddings · ideas · media · hot_videos
 ```
 
+The feed is **long compilations** (4 hours or more) of Chinese 3D / AI animation: `min_duration_sec`, `niche_only`
+and `niche_exclude_terms` in `app_config` drop clips, off-topic videos and tutorials before scoring.
+
 `hot_videos` holds, per run, the 10 hottest Bilibili videos (`kind = video`) and the top 10 of Bilibili's live
 国创 series ranking (`kind = series`); `media` holds the analysis charts (`kind = analysis`, with `caption` and
 `position`). estfstudio's Telegram `/analysis` reads both.

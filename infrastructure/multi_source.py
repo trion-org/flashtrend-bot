@@ -26,10 +26,11 @@ class MultiSource:
         chart_enabled: bool = True,
         window_hours: int = 48,
         bilibili_keywords: tuple[str, ...] = (),
+        min_duration_sec: int = 0,
     ) -> list[VideoSnapshot]:
-        videos = self._youtube.collect(regions, keywords, now, chart_enabled, window_hours)
+        videos = self._youtube.collect(regions, keywords, now, chart_enabled, window_hours, min_duration_sec)
         if self._bilibili and bilibili_keywords:
-            found = self._bilibili.collect(bilibili_keywords, now, window_hours)
+            found = self._bilibili.collect(bilibili_keywords, now, window_hours, min_duration_sec)
             self._drain_warnings()
             self._obs.info(f"Bilibili: {len(found)} video(s) from {len(bilibili_keywords)} keyword(s)")
             seen = {v.id for v in videos}

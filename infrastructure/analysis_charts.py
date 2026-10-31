@@ -40,7 +40,7 @@ from infrastructure.chart import (
 MIN_POINTS = 5  # fewer candidates than this make a distribution chart meaningless
 
 DURATION_BUCKETS = (  # (label, upper bound in seconds)
-    ("< 10 phút", 600), ("10–30 phút", 1800), ("30–60 phút", 3600), ("1–3 giờ", 10800), ("> 3 giờ", None),
+    ("< 1 giờ", 3600), ("1–4 giờ", 14400), ("4–8 giờ", 28800), ("8–24 giờ", 86400), ("> 24 giờ", None),
 )
 
 
@@ -182,8 +182,8 @@ class AnalysisCharts:
             return next(i for i, (_, hi) in enumerate(DURATION_BUCKETS) if hi is None or seconds < hi)
 
         groups = _by_platform(timed)
-        long_n = sum(1 for c in timed if c.video.duration_sec >= 3600)
-        fig, ax = frame("Thời lượng video", f"{long_n}/{len(timed)} video dài từ 1 giờ — hợp tuyển tập nhiều "
+        long_n = sum(1 for c in timed if c.video.duration_sec >= 14400)
+        fig, ax = frame("Thời lượng video", f"{long_n}/{len(timed)} video dài từ 4 giờ — tuyển tập nhiều "
                         "tập", run_id, now)
         _style(ax)
         bottoms = [0] * len(labels)

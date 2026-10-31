@@ -23,6 +23,9 @@ Job đọc bảng này **một lần ở đầu run** để lấy ngưỡng θ, 
 | `regions` | text[] | không | `regionCode` cho chart A1 (ISO 3166-1 alpha-2) | `{VN,JP}` |
 | `keywords` | text[] | không | Từ khoá cho `search.list` (A2); rỗng = chỉ dùng chart | `{python bot,ai tools,personal finance,street food,youtube shorts}` |
 | `bilibili_keywords` | text[], **đề xuất** | không | Từ khoá tiếng Trung cho tìm kiếm Bilibili; rỗng = tắt Bilibili | `{3D玄幻,修仙动画,AI漫剧}` |
+| `min_duration_sec` | int, **đề xuất** | không | Bỏ video ngắn hơn N giây trước khi chấm điểm, và yêu cầu cả hai nền tảng chỉ trả video dài; `0` = mọi độ dài | `14400` |
+| `niche_only` | bool, **đề xuất** | không | `true` = bỏ video không thuộc ngách (không khớp `niche_terms`) trước khi chấm điểm | `true` |
+| `niche_exclude_terms` | text[], **đề xuất** | không | Tiêu đề có một từ này thì không bao giờ thuộc ngách (khoá học, thuyết minh truyện cũng dài hàng giờ) | `{教程,解说,说书}` |
 | `bilibili_series_types` | int[], **đề xuất** | không | Bảng xếp hạng series "đang hot" của Bilibili; `4` = 国创; rỗng = không lấy | `{4}` |
 | `niche_terms` | text[], **đề xuất** | không | Từ trong tiêu đề/mô tả để coi video thuộc ngách (khớp không phân biệt hoa thường) | `{国漫,国创,漫剧,修仙}` |
 | `niche_boost` | float, **đề xuất** | không | Hệ số ưu tiên của video ngách khi xếp ý tưởng và danh sách hot (1–10); không đổi `viral_score` | `3` |
@@ -40,7 +43,7 @@ Job đọc bảng này **một lần ở đầu run** để lấy ngưỡng θ, 
 | `llm_enabled` | boolean | không | `true` ở MVP; `false` chỉ khi debug L1/L2 không gọi Gemini | `true` |
 | `relaxed_z_threshold` | float, **đề xuất** | không | θ dùng khi `cohort_n < min_cohort_n` | `0.5` |
 | `chart_enabled` | boolean, **đề xuất** | không | `false` = bỏ chart `mostPopular` chung để cohort chỉ gồm video trong ngách | `false` |
-| `search_window_hours` | int, **đề xuất** | không | A2 chỉ lấy video đăng trong N giờ gần nhất (1–720); ngách ít upload cần nhiều ngày | `168` |
+| `search_window_hours` | int, **đề xuất** | không | A2 chỉ lấy video đăng trong N giờ gần nhất (1–4320, tức 180 ngày); ngách ít upload hoặc tổng hợp dài cần nhiều tuần | `2160` |
 | `updated_at` | timestamptz | không | Lần người sửa tham số (không phải mỗi job) | `2026-10-28T07:17:00+07:00` |
 
 Ví dụ ngách hoạt hình Trung Quốc (đo trên kết quả YouTube thật, 2026-10-31): từ khoá ngắn và rộng như `国漫`, `修仙动画`, `AI漫剧` cho khoảng 25 video mỗi lần; cụm ghép `全集` / `合集` hoặc `国创 3D` trả về 0 vì YouTube coi là AND; cửa sổ 48 giờ để trống phần lớn từ khoá nên seed đặt `search_window_hours = 168`, `chart_enabled = false` và `decay_lambda = 0.01` (nửa đời ≈ 69 giờ, vì λ = 0.05 sẽ đưa điểm mọi video 6 ngày tuổi về gần 0). Bản đầy đủ nằm ở `sql/04_seed_app_config.sql`.
@@ -68,6 +71,16 @@ Bilibili không có API công khai cho việc này, nên adapter gọi đúng ha
 - **Bilibili không bao giờ làm hỏng run.** Mỗi request thử lại sau 3, 8, 20 giây; từ khoá vẫn bị chặn thì bị bỏ qua và báo `warn`, các từ khoá khác và YouTube vẫn chạy. Giữa hai request có nghỉ 1 giây.
 - Mã nền tảng trong `id` là `bi_`: video `bi_BV1…`, kênh `bi_<mid>`.
 
+## Tìm video tổng hợp dài thay vì clip {#tong-hop-dai}
+
+Ngách cần là **tuyển tập hoạt hình dài từ 4 giờ trở lên** (cả mùa phim hoặc nhiều bộ trong một video), không phải clip ngắn. Ba lớp lọc làm việc đó, theo thứ tự:
+
+1. **Hỏi đúng nền tảng.** Khi `min_duration_sec` từ 1 giờ trở lên, Bilibili được tìm với `duration=4` (dài hơn 60 phút) và đọc 2 trang cho mỗi từ khoá; YouTube dùng `videoDuration=long` (trên 20 phút, bộ lọc dài nhất API có).
+2. **Lọc độ dài.** Video ngắn hơn `min_duration_sec` hoặc không có thời lượng bị bỏ trước khi chấm điểm, nên không tốn một request thẻ kênh nào cho chúng.
+3. **Lọc ngách.** Với `niche_only`, video phải khớp một từ trong `niche_terms` và tiêu đề không chứa từ nào trong `niche_exclude_terms`.
+
+Đo ngày 2026-10-31 trên Bilibili: 8 truy vấn dạng tuyển tập (`国漫 合集`, `修仙动画 合集`, `3D国漫 全集 连播`, `国漫 通宵 连播`…) cho **61 video khác nhau dài từ 4 giờ trở lên**, có video dài 10 đến 80 giờ. Chúng thường đã đăng nhiều tháng, nên cửa sổ tìm là 90 ngày và `decay_lambda = 0.001` (video 7 ngày tuổi giữ 85% điểm, 90 ngày giữ 12%; λ = 0.01 sẽ làm điểm mọi video cũ hơn một tuần về gần 0). Tìm kiếm không tin tuyệt đối vào từ khoá: cuộc đo cũng trả về khoá học làm hoạt hình AI dài 293 giờ và thuyết minh tiểu thuyết 2446 chương, nên `niche_exclude_terms` là bắt buộc.
+
 ## Ưu tiên ngách, chạy mỗi giờ và biểu đồ phân tích {#uu-tien}
 
 **Ưu tiên ngách.** Video khớp `niche_terms` trong tiêu đề hoặc mô tả được nhân `niche_boost` khi xếp thứ tự ý tưởng, danh sách hot và thẻ đầu. Điểm `viral_score` lưu trong database không đổi, nên so sánh với các lần chạy cũ vẫn đúng. Từ khoá tìm kiếm một mình không đủ để coi là ngách (nó chỉ cho biết đã gõ gì, không cho biết kết quả là gì). Từ `3D动画` đứng một mình bị bỏ khỏi `niche_terms` vì khớp cả video súng và kỹ thuật.
@@ -92,7 +105,7 @@ Giờ không tìm YouTube vẫn đọc Bilibili (không tốn quota), nên danh 
 | 2 | Lượt xem và z-score | Video nào vượt trội so với nền tảng của nó (vòng vàng) |
 | 3 | Phân bố z-score | Cohort có lệch không, ngưỡng θ từng nền tảng nằm ở đâu |
 | 4 | Tỉ trọng nền tảng | Bilibili và YouTube chiếm bao nhiêu video và lượt xem |
-| 5 | Thời lượng video | Bao nhiêu video dài từ 1 giờ (tuyển tập nhiều tập) |
+| 5 | Thời lượng video | Số video theo nhóm thời lượng; từ 4 giờ trở lên là tuyển tập |
 | 6 | Giờ đăng | Khung giờ đăng nhiều video (giờ Việt Nam) |
 | 7 | Từ khoá hiệu quả nhất | Từ khoá cho lượt xem trung vị cao |
 | 8 | Các lần chạy gần đây | Số video thu được và outlier theo thời gian |

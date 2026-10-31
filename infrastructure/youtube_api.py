@@ -22,6 +22,7 @@ PREFIX = "yt_"
 CHANNEL_CACHE = timedelta(hours=24)
 DESCRIPTION_MAX_CHARS = 500
 BATCH = 50
+LONG_FROM_SEC = 1200  # a minimum this long makes the search ask for ``videoDuration=long`` (over 20 min)
 
 _DURATION = re.compile(r"^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$")
 _QUOTA_REASONS = {"quotaExceeded", "dailyLimitExceeded", "rateLimitExceeded", "userRateLimitExceeded"}
@@ -95,6 +96,7 @@ class YouTubeSource:
         now: datetime,
         chart_enabled: bool = True,
         window_hours: int = 48,
+        min_duration_sec: int = 0,
     ) -> list[VideoSnapshot]:
         found: dict[str, VideoSnapshot] = {}
         if chart_enabled:
@@ -103,7 +105,8 @@ class YouTubeSource:
                     found.setdefault(video.id, video)
         search_region = regions[0] if regions else None
         for keyword in keywords:
-            ids = self._search(keyword, search_region, now, timedelta(hours=window_hours))
+            ids = self._search(keyword, search_region, now, timedelta(hours=window_hours),
+                               min_duration_sec >= LONG_FROM_SEC)
             for video in self._videos(ids, now, tag=keyword):
                 found.setdefault(video.id, video)
         return list(found.values())
@@ -151,7 +154,7 @@ class YouTubeSource:
         return [v for v in (self._parse(i, now, "chart") for i in resp.get("items", [])) if v]
 
     def _search(
-        self, keyword: str, region: str | None, now: datetime, window: timedelta
+        self, keyword: str, region: str | None, now: datetime, window: timedelta, long_only: bool = False
     ) -> list[str]:
         params = {
             "part": "id",
@@ -163,6 +166,8 @@ class YouTubeSource:
         }
         if region:
             params["regionCode"] = region
+        if long_only:
+            params["videoDuration"] = "long"  # over 20 minutes: the only length filter the API has
         resp = self._execute(self._yt.search().list(**params))
         return [i["id"]["videoId"] for i in resp.get("items", []) if i.get("id", {}).get("videoId")]
 

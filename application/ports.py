@@ -51,9 +51,10 @@ class VideoSource(Protocol):
         chart_enabled: bool = True,
         window_hours: int = 48,
         bilibili_keywords: tuple[str, ...] = (),
+        min_duration_sec: int = 0,
     ) -> list[VideoSnapshot]:
         """A1 chart per region (when enabled) + A2 keyword search over the window, plus Bilibili search
-        for ``bilibili_keywords``; de-duplicated."""
+        for ``bilibili_keywords``; de-duplicated. A ``min_duration_sec`` asks both for long videos."""
 
     def hot_series(self, season_types: tuple[int, ...], now: datetime) -> list[HotSeries]:
         """Bilibili's live series ranking (4 = 国创); empty when it is off or unreachable."""

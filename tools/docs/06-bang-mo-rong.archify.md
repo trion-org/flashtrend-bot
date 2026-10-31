@@ -155,6 +155,13 @@ alter table app_config add column if not exists youtube_search_every_hours int n
   check (youtube_search_every_hours between 1 and 24);
 alter table app_config add column if not exists analysis_every_hours int not null default 1
   check (analysis_every_hours between 1 and 24);
+alter table app_config add column if not exists niche_exclude_terms text[] not null default '{}';
+alter table app_config add column if not exists niche_only boolean not null default false;
+alter table app_config add column if not exists min_duration_sec int not null default 0
+  check (min_duration_sec >= 0);
+alter table app_config drop constraint if exists app_config_search_window_hours_check;
+alter table app_config add constraint app_config_search_window_hours_check
+  check (search_window_hours between 1 and 4320);
 ```
 
 | Cột mới | Ý nghĩa |
@@ -163,4 +170,7 @@ alter table app_config add column if not exists analysis_every_hours int not nul
 | `app_config.niche_terms` | Từ trong tiêu đề hoặc mô tả để coi video thuộc ngách |
 | `app_config.niche_boost` | Hệ số ưu tiên ngách khi xếp ý tưởng và danh sách hot (không đổi `viral_score`) |
 | `app_config.youtube_search_every_hours` | Tìm từ khoá YouTube chỉ khi giờ chia hết N: giữ quota 10.000 đơn vị/ngày |
+| `app_config.min_duration_sec` | Bỏ video ngắn hơn N giây và chỉ yêu cầu video dài từ nền tảng; 0 = không lọc |
+| `app_config.niche_only` | Bỏ video không thuộc ngách trước khi chấm điểm |
+| `app_config.niche_exclude_terms` | Tiêu đề có từ này thì không thuộc ngách (khoá học, thuyết minh) |
 | `app_config.analysis_every_hours` | Vẽ và upload biểu đồ chỉ khi giờ chia hết N: giữ tải của image host |

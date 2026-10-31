@@ -347,6 +347,68 @@ class HotListTest(unittest.TestCase):
         self.assertTrue(any("hot_videos not written" in line for line in obs.lines))
 
 
+class RelevanceTest(unittest.TestCase):
+    """Only long compilations of the niche are scored: a clip or an off-topic video never reaches the list."""
+
+    @staticmethod
+    def videos():
+        from domain.models import Channel, VideoSnapshot
+
+        rows = [  # (title, duration in hours)
+            ("3D国漫 全集 合集", 6.0), ("修仙动画 合集 8小时", 8.0), ("3D国漫 第1集", 0.4),
+            ("Python 教程 全集 合集", 5.0), ("国漫 制作教程 5小时", 5.0), ("旅行 vlog 合集", 6.0),
+        ]
+        vids, chans = [], []
+        for i, (title, hours) in enumerate(rows):
+            vids.append(VideoSnapshot(
+                id=f"bi_BV{i}", platform="bilibili", native_id=f"BV{i}", url=f"https://www.bilibili.com/video/BV{i}",
+                title=title, description="", published_at=NOW - timedelta(hours=30), channel_id=f"bi_{i}",
+                duration_sec=int(hours * 3600), thumbnail_url=None, views=90_000 * (i + 1), likes=100, comments=10,
+                captured_at=NOW, query_tag="k"))
+            chans.append(Channel(id=f"bi_{i}", platform="bilibili", native_id=str(i), title=f"up{i}",
+                                 subscriber_count=1000, video_count=5, channel_avg_views=1000.0,
+                                 fetched_at=NOW, stale_after=NOW + timedelta(hours=24)))
+        return vids, chans
+
+    def run_with(self, **config):
+        vids, chans = self.videos()
+        base = dict(keywords=(), bilibili_keywords=("国漫",), niche_terms=("国漫", "修仙"),
+                    niche_exclude_terms=("教程",))
+        source = FakeSource(vids, chans)
+        uc, store, obs = make(store=FakeStore(AppConfig(**{**base, **config})), source=source)
+        return uc.run(), store, obs, source
+
+    def test_the_default_config_filters_nothing(self):
+        _, store, _, _ = self.run_with()
+        self.assertEqual(len(store.candidates), 6)
+
+    def test_short_clips_are_dropped_and_the_minimum_reaches_the_searches(self):
+        _, store, obs, source = self.run_with(min_duration_sec=4 * 3600)
+        titles = sorted(c.video.title for c in store.candidates)
+        self.assertNotIn("3D国漫 第1集", titles)
+        self.assertEqual(len(titles), 5)
+        self.assertEqual(source.min_duration_sec, 4 * 3600)
+        self.assertTrue(any("1 shorter than 4 h" in m for m in obs.lines))
+
+    def test_a_video_without_a_duration_is_not_a_long_one(self):
+        vids, chans = self.videos()
+        vids[0] = vids[0].__class__(**{**vids[0].__dict__, "duration_sec": None})
+        uc, store, _ = make(store=FakeStore(AppConfig(keywords=(), min_duration_sec=3600)),
+                            source=FakeSource(vids, chans))
+        uc.run()
+        self.assertNotIn("3D国漫 全集 合集", [c.video.title for c in store.candidates])
+
+    def test_niche_only_keeps_long_animation_and_drops_tutorials_and_other_topics(self):
+        _, store, _, _ = self.run_with(min_duration_sec=4 * 3600, niche_only=True)
+        self.assertEqual(sorted(c.video.title for c in store.candidates), ["3D国漫 全集 合集", "修仙动画 合集 8小时"])
+        hot = [h.title for h in store.hot_videos[RUN_ID] if h.kind == "video"]
+        self.assertEqual(sorted(hot), ["3D国漫 全集 合集", "修仙动画 合集 8小时"])
+
+    def test_the_channel_baseline_is_only_asked_for_what_is_kept(self):
+        _, _, _, source = self.run_with(min_duration_sec=4 * 3600, niche_only=True)
+        self.assertEqual(sorted(i for ids in source.fetched for i in ids), ["bi_0", "bi_1"])
+
+
 class CadenceTest(unittest.TestCase):
     def test_a_scheduled_run_searches_youtube_only_every_n_hours(self):
         source = FakeSource()

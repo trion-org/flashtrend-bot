@@ -71,6 +71,12 @@ class NicheMatchTest(unittest.TestCase):
     def test_a_search_tag_alone_proves_nothing(self):
         self.assertFalse(scoring.niche_match("x", "", ()))
 
+    def test_an_excluded_word_in_the_title_wins_but_one_in_the_description_does_not(self):
+        terms, exclude = ("国漫",), ("教程", "解说")
+        self.assertFalse(scoring.niche_match("国漫 制作教程", "", terms, exclude))
+        self.assertFalse(scoring.niche_match("《凡人》国漫解说", "", terms, exclude))
+        self.assertTrue(scoring.niche_match("国漫 全集", "看完有 教程 链接", terms, exclude))
+
     def test_empty_terms_never_match_everything(self):
         self.assertFalse(scoring.niche_match("x", "y", ("",)))
 

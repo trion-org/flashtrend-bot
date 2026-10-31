@@ -5,4 +5,4 @@
 -- After running this, run 04_seed_app_config.sql again to apply the values.
 alter table app_config add column if not exists chart_enabled boolean not null default true;
 alter table app_config add column if not exists search_window_hours int not null default 48
-  check (search_window_hours between 1 and 720);
+  check (search_window_hours between 1 and 4320);

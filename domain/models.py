@@ -36,6 +36,9 @@ class AppConfig:
     bilibili_series_types: tuple[int, ...] = ()  # Bilibili series rankings (4 = 国创); empty = none
     niche_terms: tuple[str, ...] = ()  # a title/description with one of these is in the niche
     niche_boost: float = 1.0  # idea priority multiplier for the niche (viral_score itself is not changed)
+    niche_exclude_terms: tuple[str, ...] = ()  # a title with one of these is never the niche (tutorials)
+    niche_only: bool = False  # drop every video that is not the niche before scoring
+    min_duration_sec: int = 0  # drop (and ask the platforms for) videos shorter than this; 0 = any length
     youtube_search_every_hours: int = 1  # YouTube keyword search only when hour % N == 0 (quota)
     analysis_every_hours: int = 1  # analysis charts only when hour % N == 0 (image host load)
 

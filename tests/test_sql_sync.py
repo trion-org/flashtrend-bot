@@ -38,7 +38,8 @@ class SqlSyncTest(unittest.TestCase):
         seed = (ROOT / "sql/04_seed_app_config.sql").read_text(encoding="utf-8")
         for field in ("keywords", "bilibili_keywords", "bilibili_series_types", "niche_terms", "niche_boost",
                       "chart_enabled", "search_window_hours", "decay_lambda", "youtube_search_every_hours",
-                      "analysis_every_hours", "snapshot_ttl_days"):
+                      "analysis_every_hours", "snapshot_ttl_days", "niche_exclude_terms", "niche_only",
+                      "min_duration_sec"):
             self.assertRegex(seed, rf"{field} = excluded\.{field}")
 
     def test_migration_07_is_the_docs_block_and_adds_every_new_column(self):
@@ -46,7 +47,8 @@ class SqlSyncTest(unittest.TestCase):
         migration = (ROOT / "sql/07_analysis.sql").read_text(encoding="utf-8")
         self.assertIn(block, migration)
         for column in ("caption", "position", "bilibili_series_types", "niche_terms", "niche_boost",
-                       "youtube_search_every_hours", "analysis_every_hours"):
+                       "youtube_search_every_hours", "analysis_every_hours", "niche_exclude_terms", "niche_only",
+                       "min_duration_sec"):
             self.assertRegex(migration, rf"add column if not exists {column} ")
         self.assertIn("create table if not exists hot_videos", migration)
         self.assertIn("alter table hot_videos enable row level security", migration)

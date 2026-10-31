@@ -37,6 +37,8 @@ class SupabaseStoreIntegrationTest(unittest.TestCase):
         cls.store = SupabaseStore(client)
 
     def run_digest(self, clock_offset_h=0, **kw):
+        # the seed asks for 4 h compilations of the niche; the sample cohort is ten-minute YouTube videos
+        self.store._db.table("app_config").update({"min_duration_sec": 0, "niche_only": False}).eq("id", 1).execute()
         now = NOW + timedelta(hours=clock_offset_h)
         return RunDigest(
             self.store, FakeSource(videos=[dataclasses.replace(v, captured_at=now) for v in
@@ -52,10 +54,12 @@ class SupabaseStoreIntegrationTest(unittest.TestCase):
         self.assertIn("国漫", c.keywords)  # Chinese keywords survive the DB round trip
         self.assertIn("Chinese AI animation", c.keywords)
         self.assertEqual((len(c.keywords), c.regions), (8, ("VN",)))
-        self.assertEqual((c.chart_enabled, c.search_window_hours, c.decay_lambda), (False, 168, 0.01))
+        self.assertEqual((c.chart_enabled, c.search_window_hours, c.decay_lambda), (False, 2160, 0.001))
+        self.assertEqual((c.min_duration_sec, c.niche_only, "教程" in c.niche_exclude_terms), (14400, True, True))
         self.assertEqual((c.bilibili_series_types, c.niche_boost, c.snapshot_ttl_days), ((4,), 3.0, 14))
         self.assertEqual((c.youtube_search_every_hours, c.analysis_every_hours), (6, 3))
-        self.assertEqual(c.bilibili_keywords, ("3D玄幻", "3D国漫", "修仙动画", "国漫", "AI漫剧", "AI动画"))
+        self.assertEqual(len(c.bilibili_keywords), 8)
+        self.assertIn("国漫 合集", c.bilibili_keywords)
 
     def test_02_full_run_writes_everything_the_docs_promise(self):
         r = self.run_digest()

@@ -91,9 +91,11 @@ class FakeSource:
         self.error = error
         self.fetched: list[list[str]] = []
 
-    def collect(self, regions, keywords, now, chart_enabled=True, window_hours=48, bilibili_keywords=()):
+    def collect(self, regions, keywords, now, chart_enabled=True, window_hours=48, bilibili_keywords=(),
+                min_duration_sec=0):
         self.collect_args = (regions, keywords, chart_enabled, window_hours)
         self.bilibili_keywords = bilibili_keywords
+        self.min_duration_sec = min_duration_sec
         if self.error:
             raise self.error
         return list(self.videos)
