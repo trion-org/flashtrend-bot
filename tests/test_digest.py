@@ -5,7 +5,7 @@ from datetime import timedelta
 from application.digest import RunDigest
 from domain import errors as E
 from domain.errors import FlashTrendError
-from domain.models import AppConfig, HotSeries, PreviousSnapshot
+from domain.models import QUERY_MAX_CHARS, AppConfig, HotSeries, PreviousSnapshot, RunRequest
 from tests.fakes import (
     NOW,
     FakeChart,
@@ -16,6 +16,7 @@ from tests.fakes import (
     FakeWriter,
     good_llm,
     sample_channels,
+    sample_videos,
 )
 
 RUN_ID = "run_20261028T071712"
@@ -257,14 +258,88 @@ class AnalysisChartsTest(unittest.TestCase):
 
 
 class FakeTranslator:
-    def __init__(self, error=None):
-        self.error, self.asked = error, []
+    def __init__(self, error=None, chinese="西游记 动画"):
+        self.error, self.asked, self.chinese, self.queries = error, [], chinese, []
 
     def translate(self, titles):
         self.asked.append(list(titles))
         if self.error:
             raise self.error
         return [f"VI {t}" for t in titles]
+
+    def to_chinese(self, query):
+        self.queries.append(query)
+        if self.error:
+            raise self.error
+        return self.chinese
+
+
+def bilibili_source():
+    """The sample cohort as Bilibili videos: ten-minute clips, none of them in the niche."""
+    return FakeSource(videos=[dataclasses.replace(v, id="bi_" + v.native_id, platform="bilibili",
+                                                  url=f"https://www.bilibili.com/video/{v.native_id}")
+                              for v in sample_videos()])
+
+
+class RunModesTest(unittest.TestCase):
+    NICHE = AppConfig(keywords=("python bot",), bilibili_keywords=("国漫 合集",), min_duration_sec=4 * 3600,
+                      niche_only=True, niche_terms=("国漫",), niche_boost=3.0, bilibili_series_types=(4,))
+
+    def run_mode(self, request, translator=None, analysis=None):
+        source = bilibili_source()
+        uc, store, obs = make(store=FakeStore(self.NICHE), source=source, translator=translator,
+                              analysis=analysis, host=FakeImageHost() if analysis else None)
+        return uc.run(request), store, source, obs
+
+    def test_a_search_is_translated_searched_on_bilibili_alone_and_keeps_every_length(self):
+        translator = FakeTranslator()
+        request = RunRequest("search", "  phim hoạt hình   Tây Du Ký ", "tg1x2")
+        result, store, source, obs = self.run_mode(request, translator)
+        self.assertEqual((result.status, result.run_id), ("ok", RUN_ID + "_search"))
+        self.assertEqual(translator.queries, ["phim hoạt hình Tây Du Ký"])
+        self.assertEqual(source.searched, ("西游记 动画", self.NICHE.search_window_hours))
+        self.assertFalse(hasattr(source, "collect_args"))  # no YouTube, no niche keywords
+        self.assertEqual(source.series_args, ())  # no 国创 series either
+        run = store.runs[result.run_id]
+        self.assertEqual((run["request"], run["query_zh"]), (request, "西游记 动画"))
+        rows = store.hot_videos[result.run_id]
+        self.assertTrue(rows and all(r.duration_sec == 600 and not r.niche for r in rows))  # short, off-niche: kept
+        self.assertEqual(store.ideas, {})  # a look, not an idea run: no embeddings, no Gemini ideas
+        self.assertTrue(any("search 'phim hoạt hình Tây Du Ký' → '西游记 动画'" in line for line in obs.lines))
+
+    def test_trending_reads_the_hot_lists_and_draws_no_timeline(self):
+        analysis = FakeAnalysis()
+        result, store, source, _ = self.run_mode(RunRequest("trending", "ignored", "tg9"), FakeTranslator(),
+                                                 analysis)
+        self.assertEqual((result.status, result.run_id), ("ok", RUN_ID + "_trending"))
+        self.assertTrue(source.trended)
+        self.assertIsNone(store.runs[result.run_id]["request"].query)  # only a search keeps a query
+        self.assertEqual(analysis.history, [])  # the timeline is the hourly runs': not this look's
+
+    def test_a_failed_translation_searches_what_was_typed(self):
+        result, store, source, obs = self.run_mode(RunRequest("search", "西游记"), FakeTranslator(RuntimeError("429")))
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(source.searched[0], "西游记")
+        self.assertIsNone(store.runs[result.run_id]["query_zh"])
+        self.assertTrue(any("search not translated to Chinese" in line for line in obs.lines))
+
+    def test_the_hourly_digest_is_unchanged(self):
+        result, store, source, _ = self.run_mode(None, FakeTranslator())
+        self.assertEqual(result.run_id, RUN_ID)
+        self.assertEqual(source.collect_args[1], ("python bot",))
+        self.assertEqual(source.bilibili_keywords, ("国漫 合集",))
+        self.assertIsNone(store.runs[RUN_ID]["request"])
+        self.assertEqual(store.hot_videos.get(RUN_ID, []), [])  # ten-minute clips: below the 4 h minimum
+
+    def test_a_request_is_checked(self):
+        self.assertEqual(RunRequest("search", " a  b ").query, "a b")
+        self.assertEqual(len(RunRequest("search", "x" * 500).query), QUERY_MAX_CHARS)
+        self.assertEqual((RunRequest("digest", "x", "").query, RunRequest("digest", "x", "").request_id),
+                         (None, None))
+        self.assertFalse(RunRequest().ad_hoc)
+        for bad in (("nope",), ("search", "  "), ("trending", None, "has space"), ("trending", None, "x" * 65)):
+            with self.assertRaises(ValueError):
+                RunRequest(*bad)
 
 
 class TitleTranslationTest(unittest.TestCase):

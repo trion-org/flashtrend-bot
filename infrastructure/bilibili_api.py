@@ -7,6 +7,9 @@ Bilibili has no public API for this, so it reads the web endpoints the site itse
 * ``pgc/web/rank/list`` — the live "hot now" ranking of Chinese-animation (国创) *series*, e.g. 灵笼 第二季
   (``season_type=4``). Measured 2026-10-31: the per-category *video* rankings (``ranking/v2`` with a ``rid``
   other than 0) are frozen at Mar 2025 — every item 576+ days old — so they are not used.
+* ``x/web-interface/popular`` (综合热门, median age ~1 day) and ``ranking/v2?rid=0`` (全站排行榜, top 100,
+  ~2 days) — what is hot on the whole site, every topic, for a run that looks for no keyword. Measured
+  2026-10-31: both live; mostly games, music and daily life, almost nothing over an hour.
 * ``x/player/pagelist`` — the parts (分P) of one video with each part's length. Search reports the *sum* of
   the parts, but the player opens part 1, so a 9-hour upload can open on a 7-minute clip. Measured 2026-10-31:
   10 hot videos, totals identical to search, 4 with several parts (part 1 of 18 was 1 h 56 of 46 h).
@@ -44,6 +47,10 @@ CARD_URL = "https://api.bilibili.com/x/web-interface/card"
 LONG_DURATION_CODE = 4
 LONG_FROM_SEC = 3600  # a minimum this long makes the search ask for ``duration=4``
 SERIES_URL = "https://api.bilibili.com/pgc/web/rank/list"
+POPULAR_URL = "https://api.bilibili.com/x/web-interface/popular"
+RANKING_URL = "https://api.bilibili.com/x/web-interface/ranking/v2"
+POPULAR_SIZE = 50  # one page of 综合热门; the 全站排行榜 always answers its top 100
+TRENDING_TAG = "trending"  # ``query_tag`` of a video from the hot lists (it was not searched for)
 PAGELIST_URL = "https://api.bilibili.com/x/player/pagelist"
 BREAKER_AFTER = 3  # consecutive blocked requests after which the rest of the run stops asking
 HEADERS = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)", "Referer": "https://www.bilibili.com/"}
@@ -113,14 +120,16 @@ class BilibiliSource:
     # ----------------------------------------------------------------- search
 
     def collect(self, keywords: tuple[str, ...], now: datetime, window_hours: int,
-                min_duration_sec: int = 0) -> list[VideoSnapshot]:
-        """Most-played videos per keyword. With ``min_duration_sec`` of an hour or more the search itself asks
-        for ``duration=4`` (over 60 minutes), so its results are the long ones, and reads 2 pages."""
+                min_duration_sec: int = 0, pages: int | None = None) -> list[VideoSnapshot]:
+        """Most-played videos per keyword, ``pages`` × 20 each. With ``min_duration_sec`` of an hour or more
+        the search itself asks for ``duration=4`` (over 60 minutes), so its results are the long ones, and
+        reads 2 pages by default (1 otherwise)."""
         found: dict[str, VideoSnapshot] = {}
         long_only = min_duration_sec >= LONG_FROM_SEC
         end = int(now.timestamp())
         begin = int((now - timedelta(hours=window_hours)).timestamp())
-        requests = [(keyword, page) for keyword in keywords for page in range(1, 3 if long_only else 2)]
+        pages = pages or (2 if long_only else 1)
+        requests = [(keyword, page) for keyword in keywords for page in range(1, pages + 1)]
         for i, (keyword, page) in enumerate(requests):
             if i:
                 self._sleep(self._pause)
@@ -137,6 +146,27 @@ class BilibiliSource:
                 continue
             for item in (data.get("data") or {}).get("result") or []:
                 video = self._parse(item, now, keyword)
+                if video:
+                    found.setdefault(video.id, video)
+        return list(found.values())
+
+    def trending(self, now: datetime) -> list[VideoSnapshot]:
+        """综合热门 then 全站排行榜, de-duplicated; a list that stays blocked is skipped and reported."""
+        found: dict[str, VideoSnapshot] = {}
+        lists = (("综合热门", POPULAR_URL, {"ps": POPULAR_SIZE, "pn": 1}),
+                 ("全站排行榜", RANKING_URL, {"rid": 0, "type": "all"}))
+        for i, (name, url, params) in enumerate(lists):
+            if i:
+                self._sleep(self._pause)
+            try:
+                data = self._get(url, params)
+            except BilibiliUnavailable as exc:
+                self.warnings.append(f"Bilibili {name} skipped: {exc}")
+                if self._tripped():
+                    break
+                continue
+            for item in (data.get("data") or {}).get("list") or []:
+                video = self._parse_listed(item, now) if isinstance(item, dict) else None
                 if video:
                     found.setdefault(video.id, video)
         return list(found.values())
@@ -224,6 +254,31 @@ class BilibiliSource:
             comments=_int(item.get("review")),
             captured_at=to_vn(now),
             query_tag=tag,
+        )
+
+    @staticmethod
+    def _parse_listed(item: dict, now: datetime) -> VideoSnapshot | None:
+        """A hot-list item: the full archive shape (``owner``, ``stat``, ``desc``, seconds), not search's."""
+        bvid, owner, pubdate = item.get("bvid"), item.get("owner") or {}, item.get("pubdate")
+        stat = item.get("stat") or {}
+        if not bvid or not owner.get("mid") or not pubdate:
+            return None
+        return VideoSnapshot(
+            id=PREFIX + bvid,
+            platform=PLATFORM,
+            native_id=bvid,
+            url=f"https://www.bilibili.com/video/{bvid}",
+            title=clean_title(item.get("title", "")),
+            description=clean_title(item.get("desc", ""))[:DESCRIPTION_MAX_CHARS],
+            published_at=to_vn(datetime.fromtimestamp(int(pubdate), tz=now.tzinfo)),
+            channel_id=PREFIX + str(owner["mid"]),
+            duration_sec=parse_duration(item.get("duration")),
+            thumbnail_url=_https(item.get("pic")),
+            views=_int(stat.get("view")),
+            likes=_int(stat.get("like")),
+            comments=_int(stat.get("reply")),
+            captured_at=to_vn(now),
+            query_tag=TRENDING_TAG,
         )
 
     # --------------------------------------------------------------- channels

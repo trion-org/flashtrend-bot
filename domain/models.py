@@ -1,6 +1,7 @@
 """Entities (docs/01 · domain/): plain dataclasses, no I/O, stdlib only."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -151,9 +152,46 @@ class RunStats:
     duration_ms: int | None = None
 
 
-def run_id_of(now: datetime) -> str:
-    """``run_`` + Vietnam time ``YYYYMMDDTHHMMSS`` (sortable; docs/03)."""
-    return "run_" + to_vn(now).strftime("%Y%m%dT%H%M%S")
+#: what a run looks for — see :class:`RunRequest`
+RUN_MODES = ("digest", "trending", "search")
+QUERY_MAX_CHARS = 200
+_REQUEST_ID = re.compile(r"[A-Za-z0-9_.-]{1,64}")
+
+
+@dataclass(frozen=True)
+class RunRequest:
+    """What a run looks for. ``digest`` (the hourly run): the configured niche searches and filters.
+    ``trending``: Bilibili's own hot lists — no keyword, no niche or length filter. ``search``: one query, in
+    any language, translated to Chinese and searched on Bilibili — every length, no niche filter.
+    ``request_id`` is the caller's tag (estfstudio's ``/analysis``), stored on the run so the caller finds
+    its results."""
+
+    mode: str = "digest"
+    query: str | None = None
+    request_id: str | None = None
+
+    def __post_init__(self) -> None:
+        query = " ".join((self.query or "").split())[:QUERY_MAX_CHARS] or None
+        object.__setattr__(self, "query", query if self.mode == "search" else None)
+        object.__setattr__(self, "request_id", self.request_id or None)
+        if self.mode not in RUN_MODES:
+            raise ValueError(f"mode must be one of {', '.join(RUN_MODES)}, not {self.mode!r}")
+        if self.mode == "search" and not self.query:
+            raise ValueError("a search needs a query")
+        if self.request_id and not _REQUEST_ID.fullmatch(self.request_id):
+            raise ValueError("request id: 1-64 letters, digits, '_', '.' or '-'")
+
+    @property
+    def ad_hoc(self) -> bool:
+        """A one-off look asked for by someone, not the hourly digest."""
+        return self.mode != "digest"
+
+
+def run_id_of(now: datetime, mode: str = "digest") -> str:
+    """``run_`` + Vietnam time ``YYYYMMDDTHHMMSS`` (sortable; docs/03); a one-off run adds its mode, so it can
+    start in the same second as the hourly one (they run side by side)."""
+    base = "run_" + to_vn(now).strftime("%Y%m%dT%H%M%S")
+    return base if mode == "digest" else f"{base}_{mode}"
 
 
 def video_id_of(platform_prefix: str, native_id: str) -> str:

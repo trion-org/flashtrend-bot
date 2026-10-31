@@ -244,7 +244,7 @@ class AnalysisCharts:
 
     def _platform(self, run_id, now, candidates):
         groups = _by_platform(candidates)
-        if not groups:
+        if len(groups) < 2:  # one platform (a Bilibili-only look) is all of everything: nothing to compare
             return None
         counts = [len(v) for v in groups.values()]
         views = [sum(c.video.views for c in v) for v in groups.values()]

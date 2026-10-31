@@ -14,6 +14,7 @@ from domain.models import (
     Idea,
     Media,
     PreviousSnapshot,
+    RunRequest,
     RunStats,
     VideoSnapshot,
 )
@@ -59,6 +60,12 @@ class VideoSource(Protocol):
     def hot_series(self, season_types: tuple[int, ...], now: datetime) -> list[HotSeries]:
         """Bilibili's live series ranking (4 = 国创); empty when it is off or unreachable."""
 
+    def search(self, query: str, now: datetime, window_hours: int) -> list[VideoSnapshot]:
+        """Bilibili's most-played videos for one query inside the window, every length."""
+
+    def trending(self, now: datetime) -> list[VideoSnapshot]:
+        """Bilibili's own hot lists right now (综合热门 and 全站排行榜), every topic and length."""
+
     def video_parts(self, video_ids: list[str]) -> dict[str, list[int]]:
         """Seconds of each part of a Bilibili video (``bi_BV…``); an id it could not check is absent."""
 
@@ -78,6 +85,9 @@ class IdeaWriter(Protocol):
 class TitleTranslator(Protocol):
     def translate(self, titles: list[str]) -> list[str | None]:
         """Each title in Vietnamese, in order; None where it gave none."""
+
+    def to_chinese(self, query: str) -> str | None:
+        """A search request (any language) as the Bilibili search a Chinese viewer would type, or None."""
 
 
 class ImageHost(Protocol):
@@ -127,8 +137,10 @@ class DigestStore(Protocol):
     def get_app_config(self) -> AppConfig: ...
 
     def open_run(
-        self, run_id: str, trigger: str, git_sha: str, region: str, started_at: datetime
-    ) -> None: ...
+        self, run_id: str, trigger: str, git_sha: str, region: str, started_at: datetime,
+        request: RunRequest | None = None, query_zh: str | None = None,
+    ) -> None:
+        """A one-off ``request`` is stored with the run (mode, query, its Chinese, the caller's tag)."""
 
     def finish_run(
         self,
@@ -173,7 +185,7 @@ class DigestStore(Protocol):
     def proposed_video_ids(self, days: int) -> set[str]: ...
 
     def recent_runs(self, limit: int) -> list[RunPoint]:
-        """Newest ``limit`` finished runs, oldest first."""
+        """Newest ``limit`` finished digest runs (not the one-off looks), oldest first."""
 
     def get_titles_vi(self, title_hashes: list[str]) -> dict[str, str]:
         """``{title hash: Vietnamese}`` of the titles translated before."""

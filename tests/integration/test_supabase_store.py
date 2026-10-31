@@ -9,7 +9,7 @@ import unittest
 from datetime import timedelta
 
 from application.digest import RunDigest
-from domain.models import HotVideo, Media, PreviousSnapshot
+from domain.models import HotVideo, Media, PreviousSnapshot, RunRequest
 from tests.fakes import NOW, FakeChart, FakeEmbedder, FakeImageHost, FakeSource, FakeWriter
 
 
@@ -36,7 +36,7 @@ class SupabaseStoreIntegrationTest(unittest.TestCase):
         client.postgrest.base_url = client.postgrest.base_url.__class__(REST)  # bare PostgREST
         cls.store = SupabaseStore(client)
 
-    def run_digest(self, clock_offset_h=0, **kw):
+    def run_digest(self, clock_offset_h=0, request=None, **kw):
         # the seed asks for 4 h compilations of the niche; the sample cohort is ten-minute YouTube videos
         self.store._db.table("app_config").update({"min_duration_sec": 0, "niche_only": False}).eq("id", 1).execute()
         now = NOW + timedelta(hours=clock_offset_h)
@@ -45,7 +45,7 @@ class SupabaseStoreIntegrationTest(unittest.TestCase):
                                            FakeSource().videos]),
             PaddedEmbedder(), FakeWriter(), image_host=FakeImageHost(), chart=FakeChart(),
             clock=lambda: now, **kw,
-        ).run()
+        ).run(request)
 
     def test_01_config_round_trip(self):
         c = self.store.get_app_config()
@@ -183,6 +183,18 @@ class SupabaseStoreIntegrationTest(unittest.TestCase):
         ])
         rows = self.store._db.table("hot_videos").select("rank,title_vi").eq("run_id", r.run_id).order("rank").execute()
         self.assertEqual(rows.data, [{"rank": 1, "title_vi": "Linh Lung"}, {"rank": 2, "title_vi": None}])
+
+    def test_10_a_one_off_look_keeps_its_request_and_stays_off_the_timeline(self):
+        before = len(self.store.recent_runs(500))
+        request = RunRequest("search", "phim hoạt hình Tây Du Ký", "tg1x42")
+        r = self.run_digest(clock_offset_h=42, request=request)
+        self.assertEqual(r.run_id[-7:], "_search")
+        row = self.store._db.table("runs").select("mode,query,query_zh,request_id,status").eq("id", r.run_id)
+        self.assertEqual(row.execute().data, [{"mode": "search", "query": "phim hoạt hình Tây Du Ký",
+                                               "query_zh": None, "request_id": "tg1x42", "status": "ok"}])
+        self.assertEqual(len(self.store.recent_runs(500)), before)  # the timeline counts digest runs only
+        digest = self.store._db.table("runs").select("mode").neq("id", r.run_id).limit(1).execute().data
+        self.assertEqual(digest, [{"mode": "digest"}])  # rows written without a request keep the default
 
 
 if __name__ == "__main__":

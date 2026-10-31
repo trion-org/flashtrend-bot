@@ -42,6 +42,7 @@ from domain.models import (
     HotVideo,
     Idea,
     Media,
+    RunRequest,
     RunStats,
     VideoSnapshot,
     media_id_of,
@@ -106,10 +107,12 @@ class RunDigest:
 
     # ------------------------------------------------------------------ public
 
-    def run(self) -> RunResult:
+    def run(self, request: RunRequest | None = None) -> RunResult:
+        """One run; ``request`` (default: the hourly digest) says what it looks for — docs/06 · modes."""
+        request = request or RunRequest()
         started = self._clock()
         t0 = time.monotonic()
-        run_id = run_id_of(started)
+        run_id = run_id_of(started, request.mode)
 
         config = self._store.get_app_config()
         if config.schema_version != SUPPORTED_SCHEMA_VERSION:
@@ -122,16 +125,21 @@ class RunDigest:
                 run_id,
             )
 
+        query_zh = self._chinese(run_id, request.query) if request.mode == "search" else None
+        config = for_request(config, request)
         region = config.regions[0] if config.regions else "VN"
-        self._store.open_run(run_id, self._trigger, self._git_sha, region, started)
-        self._obs.info(f"{run_id}: opened (regions={list(config.regions)})")
+        self._store.open_run(run_id, self._trigger, self._git_sha, region, started,
+                             request if request.ad_hoc else None, query_zh)
+        looks_for = {"digest": f"regions={list(config.regions)}", "trending": "Bilibili hot lists",
+                     "search": f"search {request.query!r} → {query_zh!r}"}[request.mode]
+        self._obs.info(f"{run_id}: opened ({looks_for})")
 
         stats = RunStats()
         ideas: list[Idea] = []
         chart_media_id: str | None = None
         error: FlashTrendError | None = None
         try:
-            ideas, chart_media_id = self._pipeline(run_id, config, started, stats)
+            ideas, chart_media_id = self._pipeline(run_id, config, started, stats, request, query_zh)
             error = self._add_llm(run_id, config, ideas)
         except FlashTrendError as exc:
             exc.trace_id = exc.trace_id or run_id
@@ -169,8 +177,10 @@ class RunDigest:
     # --------------------------------------------------------------- pipeline
 
     def _pipeline(
-        self, run_id: str, config: AppConfig, now: datetime, stats: RunStats
+        self, run_id: str, config: AppConfig, now: datetime, stats: RunStats,
+        request: RunRequest | None = None, query_zh: str | None = None,
     ) -> tuple[list[Idea], str | None]:
+        request = request or RunRequest()
         db_bytes = self._store.db_size_bytes()
         stop_candidates = False
         if db_bytes is not None:
@@ -183,21 +193,12 @@ class RunDigest:
         self._db_bytes = db_bytes
 
         # w2 — collect, channel baselines, videos, snapshots
-        full = self._trigger != "schedule"  # a manual run always does everything
-        ask_youtube = full or now.hour % max(1, config.youtube_search_every_hours) == 0
-        if not ask_youtube:
-            self._obs.info(
-                f"{run_id}: YouTube search skipped (every {config.youtube_search_every_hours} h: quota)"
-            )
-        videos = self._source.collect(
-            config.regions,
-            config.keywords if ask_youtube else (),
-            now,
-            config.chart_enabled and ask_youtube,
-            config.search_window_hours,
-            config.bilibili_keywords,
-            config.min_duration_sec,
-        )
+        if request.mode == "search":
+            videos = self._source.search(query_zh or request.query or "", now, config.search_window_hours)
+        elif request.mode == "trending":
+            videos = self._source.trending(now)
+        else:
+            videos = self._collect_digest(run_id, config, now)
         stats.collected = len(videos)
         videos = self._relevant(run_id, videos, config)
         channels = self._baselines(videos, now)
@@ -234,16 +235,46 @@ class RunDigest:
                 f"{sum(1 for c in outliers if niche.get(c.video.id))}/{len(outliers)} outlier(s)"
             )
 
-        # w4 + w5 — L2 embeddings, clusters, history, ideas
-        ideas = self._dedup(run_id, config, outliers, channels, niche)
+        # w4 + w5 — L2 embeddings, clusters, history, ideas; a one-off look only wants what is hot
+        ideas = [] if request.ad_hoc else self._dedup(run_id, config, outliers, channels, niche)
         if ideas:
             self._store.insert_ideas(run_id, ideas)
 
         picks = self._hot(run_id, config, now, candidates, channels, niche)
         # this run on the timeline, counted like the stored ones (videos collected, not only those scored)
-        current = RunPoint(now, stats.collected, stats.outliers, len(ideas))
+        current = None if request.ad_hoc else RunPoint(now, stats.collected, stats.outliers, len(ideas))
         chart_media_id = self._images(run_id, config, now, candidates, ideas, picks, current)
         return ideas, chart_media_id
+
+    def _collect_digest(self, run_id: str, config: AppConfig, now: datetime) -> list[VideoSnapshot]:
+        """The configured searches: YouTube (every N hours on the schedule: quota) and Bilibili."""
+        full = self._trigger != "schedule"  # a manual run always does everything
+        ask_youtube = full or now.hour % max(1, config.youtube_search_every_hours) == 0
+        if not ask_youtube:
+            self._obs.info(
+                f"{run_id}: YouTube search skipped (every {config.youtube_search_every_hours} h: quota)"
+            )
+        return self._source.collect(
+            config.regions,
+            config.keywords if ask_youtube else (),
+            now,
+            config.chart_enabled and ask_youtube,
+            config.search_window_hours,
+            config.bilibili_keywords,
+            config.min_duration_sec,
+        )
+
+    def _chinese(self, run_id: str, query: str | None) -> str | None:
+        """The search request as a Chinese Bilibili search; None (the request is searched as typed) when the
+        translator is off (dry run) or fails — a search must not die on a translation."""
+        if not query or self._translator is None:
+            return None
+        try:
+            found = self._translator.to_chinese(query)
+        except Exception as exc:  # noqa: BLE001 - searched as typed instead
+            self._obs.warn(f"{run_id}: search not translated to Chinese ({type(exc).__name__}: {exc})")
+            return None
+        return found or None
 
     def _baselines(self, videos: list[VideoSnapshot], now: datetime) -> dict[str, Channel]:
         ids = sorted({v.channel_id for v in videos})
@@ -541,7 +572,8 @@ class RunDigest:
         picks: list[Idea],
         current: RunPoint | None = None,
     ) -> str | None:
-        """The top card and the analysis charts → image host → ``media``. Never fails the run (docs/07)."""
+        """The top card and the analysis charts → image host → ``media``. Never fails the run (docs/07).
+        ``current`` = this run on the timeline of the hourly runs; None (a one-off look) draws no timeline."""
         if not (self._image_host and (self._chart or self._analysis) and picks):
             return None
         if self._trigger == "schedule" and now.hour % max(1, config.analysis_every_hours):
@@ -561,7 +593,7 @@ class RunDigest:
                 self._obs.warn(f"{run_id}: top chart skipped ({type(exc).__name__}: {exc})")
         if self._analysis:
             try:
-                history = self._store.recent_runs(HISTORY_RUNS)
+                history = self._store.recent_runs(HISTORY_RUNS) if current else []
             except Exception as exc:  # noqa: BLE001 - only the timeline chart needs it
                 self._obs.warn(f"{run_id}: run history unavailable ({type(exc).__name__}: {exc})")
                 history = []
@@ -688,6 +720,15 @@ def _velocity_acceleration(video: VideoSnapshot, prev) -> tuple[float | None, fl
     acc = scoring.acceleration(prev_vel, p1.captured_at.timestamp(), vel,
                                video.captured_at.timestamp())
     return vel, acc
+
+
+def for_request(config: AppConfig, request: RunRequest) -> AppConfig:
+    """What a one-off look drops: YouTube, the niche searches, the niche and length filters, the niche boost
+    and the 国创 series — it shows what is hot for its own query (or the whole site), as it is."""
+    if not request.ad_hoc:
+        return config
+    return replace(config, keywords=(), chart_enabled=False, bilibili_keywords=(), min_duration_sec=0,
+                   niche_only=False, niche_boost=1.0, bilibili_series_types=())
 
 
 def _text_hash(text: str) -> str:

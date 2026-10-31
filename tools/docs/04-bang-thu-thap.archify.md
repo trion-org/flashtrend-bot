@@ -198,6 +198,10 @@ Mỗi job tạo đúng một hàng. Xoá một run thì `candidates` và `ideas`
 | `cohort_sigma_ratio` | float | có | σ mẫu của `performance_ratio` | `16.2272` |
 | `cohort_median_engagement` | float | có | Prior m của engagement Bayes | `0.0938` |
 | `z_threshold_used` | float, **đề xuất** | có | θ thực dùng (1.5, hoặc 0.5 khi cohort nhỏ) | `0.5` |
+| `mode` | text | không | `digest` (mỗi giờ), `trending` (hot toàn Bilibili) hay `search` (một từ khoá); xem mục "Ba chế độ chạy" của trang bảng mở rộng | `search` |
+| `query` | text | có | Chế độ `search`: từ khoá như người dùng gõ | `phim hoạt hình Tây Du Ký` |
+| `query_zh` | text | có | Từ khoá đã tìm trên Bilibili; null = tìm đúng chữ đã gõ | `西游记 动画` |
+| `request_id` | text | có | Mã yêu cầu của người gọi (estfstudio `/analysis`) | `tg6224920853x1761901502` |
 | `duration_ms` | int | có | Thời gian chạy; mục tiêu dưới 3 phút | `99000` |
 | `chart_path` | text | có | Đường dẫn PNG artifact trên Actions (debug) | `output/2026-10-28_visual_summary.png` |
 | `chart_media_id` | text FK → `media.id`, **đề xuất** | có | Biểu đồ đã upload lên image host | `img_4be1c07d9a2f5e31` |

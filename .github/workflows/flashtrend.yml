@@ -1,4 +1,6 @@
 name: FlashTrend digest
+# the request tag in the run's name lets estfstudio's /analysis find the run it started
+run-name: FlashTrend ${{ inputs.mode || 'digest' }} ${{ inputs.request }}
 on:
   schedule:
     - cron: "17 * * * *"   # mỗi giờ, phút 17 (UTC và giờ Việt Nam cùng phút). Phần nặng chạy theo
@@ -9,8 +11,22 @@ on:
         description: "Đọc dữ liệu thật nhưng không ghi gì, không gọi Gemini"
         type: boolean
         default: false
+      mode:
+        description: "digest = tổng hợp ngách như lịch chạy · trending = hot toàn Bilibili · search = tìm theo query"
+        type: choice
+        options: [digest, trending, search]
+        default: digest
+      query:
+        description: "Chế độ search: từ khoá (tiếng Việt cũng được — bot dịch sang tiếng Trung)"
+        type: string
+        default: ""
+      request:
+        description: "Mã yêu cầu của người gọi (estfstudio /analysis), lưu vào runs.request_id"
+        type: string
+        default: ""
 concurrency:
-  group: flashtrend
+  # one-off looks run beside the hourly digest instead of queueing behind (or cancelling) each other
+  group: flashtrend-${{ inputs.request || 'digest' }}
   cancel-in-progress: false
 jobs:
   digest:
@@ -36,8 +52,12 @@ jobs:
       - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
       - run: pip install -r requirements.txt
       - name: Run the digest
-        run: python main.py run --output-dir output ${{ inputs.dry_run && '--dry-run' || '' }}
+        # the query is user text: it reaches the program through env, quoted, never spliced into the script
+        run: python main.py run --output-dir output --mode "$FT_MODE" --query "$FT_QUERY" --request "$FT_REQUEST" ${{ inputs.dry_run && '--dry-run' || '' }}
         env:
+          FT_MODE: ${{ inputs.mode }}
+          FT_QUERY: ${{ inputs.query }}
+          FT_REQUEST: ${{ inputs.request }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}

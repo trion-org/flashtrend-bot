@@ -93,6 +93,14 @@ class FakeSource:
         self.error = error
         self.fetched: list[list[str]] = []
 
+    def search(self, query, now, window_hours):
+        self.searched = (query, window_hours)
+        return list(self.videos)
+
+    def trending(self, now):
+        self.trended = True
+        return list(self.videos)
+
     def collect(self, regions, keywords, now, chart_enabled=True, window_hours=48, bilibili_keywords=(),
                 min_duration_sec=0):
         self.collect_args = (regions, keywords, chart_enabled, window_hours)
@@ -196,9 +204,9 @@ class FakeStore:
     def get_app_config(self):
         return self.config
 
-    def open_run(self, run_id, trigger, git_sha, region, started_at):
+    def open_run(self, run_id, trigger, git_sha, region, started_at, request=None, query_zh=None):
         self.runs[run_id] = {"status": "running", "trigger": trigger, "git_sha": git_sha,
-                             "region": region}
+                             "region": region, "request": request, "query_zh": query_zh}
 
     def finish_run(self, run_id, status, finished_at, stats: RunStats, error, chart_media_id):
         self.runs[run_id].update(status=status, stats=stats, error=error,

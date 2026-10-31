@@ -92,6 +92,14 @@ class SearchTest(unittest.TestCase):
         multi = MultiSource(FakeSource(), src)
         self.assertEqual(multi.video_parts(["bi_BV1", "yt_x"]), {"bi_BV1": [100, 200]})
 
+    def test_pages_can_be_asked_for_without_a_minimum(self):
+        src, _ = source(ok([item(bvid="BV1")]), ok([item(bvid="BV2")]))
+        got = src.collect(("西游记 动画",), NOW, 2160, pages=2)
+        qs = [parse_qs(urlparse(u).query) for u in src._fetch.urls]
+        self.assertEqual([q["page"] for q in qs], [["1"], ["2"]])
+        self.assertTrue(all("duration" not in q for q in qs))  # every length
+        self.assertEqual([v.native_id for v in got], ["BV1", "BV2"])
+
     def test_no_minimum_keeps_one_unfiltered_page(self):
         src, _ = source(ok([]))
         src.collect(("国漫",), NOW, 48)
@@ -140,6 +148,36 @@ class SearchTest(unittest.TestCase):
         self.assertEqual(len(src.collect(("k",), NOW, 48)), 1)
 
 
+def listed(bvid="BV9zz", mid=88, view=5_000_000, **kw):
+    base = {"bvid": bvid, "owner": {"mid": mid, "name": "某UP主"}, "pubdate": PUB, "duration": 874,
+            "pic": "http://i0.hdslb.com/x.jpg", "title": "《崩坏：星穹铁道》PV", "desc": "简介",
+            "stat": {"view": view, "like": 3000, "reply": 120}, "tname": "手机游戏"}
+    return {**base, **kw}
+
+
+class TrendingTest(unittest.TestCase):
+    def test_both_hot_lists_are_read_de_duplicated_and_tagged(self):
+        popular = {"code": 0, "data": {"list": [listed("BV1"), listed("BV2", owner={})]}}
+        ranking = {"code": 0, "data": {"list": [listed("BV1"), listed("BV3", mid=99)]}}
+        src, sleeps = source(popular, ranking)
+        got = src.trending(NOW)
+        self.assertEqual([v.native_id for v in got], ["BV1", "BV3"])  # BV2 has no owner; BV1 listed twice
+        v = got[0]
+        self.assertEqual((v.channel_id, v.views, v.likes, v.comments, v.duration_sec), ("bi_88", 5_000_000, 3000,
+                                                                                        120, 874))
+        self.assertEqual((v.query_tag, v.title, v.description), ("trending", "《崩坏：星穹铁道》PV", "简介"))
+        urls = src._fetch.urls
+        self.assertIn("/x/web-interface/popular?ps=50&pn=1", urls[0])
+        self.assertIn("/x/web-interface/ranking/v2?rid=0&type=all", urls[1])
+        self.assertEqual(sleeps, [0.5])  # the pause between the two lists
+
+    def test_a_blocked_list_is_reported_and_the_other_still_read(self):
+        ranking = {"code": 0, "data": {"list": [listed("BV3")]}}
+        src, _ = source(http(412), http(412), http(412), ranking)
+        self.assertEqual([v.native_id for v in src.trending(NOW)], ["BV3"])
+        self.assertIn("综合热门 skipped: HTTP 412", " ".join(src.warnings))
+
+
 class ChannelTest(unittest.TestCase):
     def card(self, fans=1_434_024):
         return {"code": 0, "data": {"card": {"fans": fans, "name": "某UP主"}, "archive_count": 44}}
@@ -178,8 +216,12 @@ class FakeBili:
     def __init__(self, videos=(), warnings=()):
         self.videos, self.warnings, self.calls = list(videos), list(warnings), []
 
-    def collect(self, keywords, now, window_hours, min_duration_sec=0):
-        self.calls.append((keywords, window_hours))
+    def collect(self, keywords, now, window_hours, min_duration_sec=0, pages=None):
+        self.calls.append((keywords, window_hours) + ((min_duration_sec, pages) if pages else ()))
+        return self.videos
+
+    def trending(self, now):
+        self.calls.append("trending")
         return self.videos
 
     def series_ranking(self, season_types):
@@ -249,6 +291,16 @@ class MultiSourceTest(unittest.TestCase):
         self.assertEqual(len(got), 6)
         self.assertEqual(notes.warns, ["Bilibili search 'x' skipped: HTTP 412"])
         self.assertEqual(bili.warnings, [])  # drained: reported once, not on every later call
+
+    def test_a_search_asks_bilibili_alone_for_two_pages_of_every_length(self):
+        bili, notes = FakeBili([self.bi_video()], ["Bilibili search '西游记' skipped: HTTP 412"]), Notes()
+        yt = FakeSource(error=RuntimeError("YouTube must not be asked"))
+        multi = MultiSource(yt, bili, notes)
+        self.assertEqual([v.id for v in multi.search("西游记 动画", NOW, 2160)], ["bi_BV1aa"])
+        self.assertEqual([v.id for v in multi.trending(NOW)], ["bi_BV1aa"])
+        self.assertEqual(bili.calls, [(("西游记 动画",), 2160, 0, 2), "trending"])
+        self.assertEqual(notes.warns, ["Bilibili search '西游记' skipped: HTTP 412"])
+        self.assertEqual((MultiSource(yt).search("x", NOW, 1), MultiSource(yt).trending(NOW)), ([], []))
 
     def test_youtube_failure_still_fails_the_run(self):
         with self.assertRaises(RuntimeError):

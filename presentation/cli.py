@@ -7,6 +7,7 @@ import sys
 from application.observer import Observer
 from domain import errors as E
 from domain.errors import FlashTrendError
+from domain.models import RUN_MODES, RunRequest
 from infrastructure import settings as cfg
 from presentation.log import LogObserver
 from presentation.output import write_output
@@ -22,9 +23,13 @@ def build_parser() -> argparse.ArgumentParser:
                      help="read real data, write nothing, skip Gemini and image upload")
     run.add_argument("--output-dir", default=None,
                      help="also write <run_id>_digest.json and the chart PNG here (debug only)")
+    run.add_argument("--mode", default="digest", help=f"what to look for: {' | '.join(RUN_MODES)} "
+                     "(empty = digest)")
+    run.add_argument("--query", default=None, help="search mode: what to search for, any language")
+    run.add_argument("--request", default=None, help="the caller's tag, stored on the run to find it")
     sub.add_parser("check-media", help="HEAD every media URL; mark 404s alive=false")
     sub.add_parser("check-bilibili", help="one anonymous Bilibili search + channel card (no secrets needed)")
-    p.set_defaults(command="run", dry_run=False, output_dir=None)
+    p.set_defaults(command="run", dry_run=False, output_dir=None, mode="digest", query=None, request=None)
     return p
 
 
@@ -41,6 +46,11 @@ def main(argv: list[str] | None = None, observer: Observer | None = None) -> int
         print(f"configuration error: {exc}", file=sys.stderr)
         return EXIT_CONFIG
     obs = observer or LogObserver(settings.secret_values())
+    try:
+        request = RunRequest(args.mode or "digest", args.query, args.request)
+    except ValueError as exc:
+        print(f"configuration error: {exc}", file=sys.stderr)
+        return EXIT_CONFIG
 
     from composition_root import build_digest, build_media_check
 
@@ -49,7 +59,7 @@ def main(argv: list[str] | None = None, observer: Observer | None = None) -> int
         return EXIT_OK
 
     try:
-        result = build_digest(settings, obs, dry_run=args.dry_run).run()
+        result = build_digest(settings, obs, dry_run=args.dry_run).run(request)
     except FlashTrendError as exc:  # e.g. SCHEMA_MISMATCH before a run row exists
         obs.warn(f"{exc.code}: {exc.message}")
         return EXIT_RUN_ERROR

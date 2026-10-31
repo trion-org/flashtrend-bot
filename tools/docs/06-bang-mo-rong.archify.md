@@ -190,3 +190,26 @@ create table if not exists titles_vi (
 alter table titles_vi enable row level security;
 alter table hot_videos add column if not exists title_vi text;   -- null = not translated: show title
 ```
+
+## Ba chế độ chạy {#che-do}
+
+Lịch chạy mỗi giờ luôn là `digest`: tìm bằng bộ từ khoá ngách trong `app_config`, lọc ngách và độ dài như trước. Hai chế độ còn lại chỉ chạy khi được kích hoạt tay (input `mode` của workflow; lệnh `/analysis` của estfstudio dùng chúng) và **bỏ hết phần ngách**: không YouTube, không từ khoá ngách, không lọc ngách hay độ dài, không hệ số ưu tiên ngách, không bảng series 国创, không viết ý tưởng bằng Gemini.
+
+| Chế độ | Lấy video từ đâu | Dùng khi |
+| --- | --- | --- |
+| `digest` | Bộ từ khoá ngách (YouTube + Bilibili), chỉ video ≥ `min_duration_sec` thuộc ngách | Lịch chạy mỗi giờ, hoặc chạy tay không chọn gì |
+| `trending` | Bảng hot của chính Bilibili: 综合热门 (50 video) và 全站排行榜 (top 100), mọi chủ đề, mọi độ dài | `/analysis` không kèm từ khoá |
+| `search` | Từ khoá người dùng gõ (tiếng Việt cũng được), Gemini đổi thành từ khoá tìm tiếng Trung (phim hoạt hình Tây Du Ký → 西游记 动画), rồi tìm trên Bilibili: 40 video nhiều lượt xem nhất trong `search_window_hours`, mọi độ dài | `/analysis <từ khoá>` |
+
+Phần chấm điểm (z-score so với kênh, viral score), danh sách hot, tên tiếng Việt và biểu đồ giữ nguyên. Biểu đồ không có ý nghĩa với một lần tìm thì không vẽ: tỉ trọng nền tảng (chỉ có Bilibili), từ khoá hiệu quả (chỉ một từ khoá) và các lần chạy gần đây (lịch sử của lần chạy mỗi giờ). Lịch sử đó cũng chỉ đếm các run `digest`. Dịch từ khoá lỗi thì tìm đúng chữ đã gõ, không làm hỏng run.
+
+Mỗi run một lần có `id` thêm đuôi chế độ (`run_20261031T160502_search`) vì nó chạy song song với run mỗi giờ: workflow đặt `concurrency` theo mã yêu cầu, nên các lần tìm không phải xếp hàng sau nhau, cũng không huỷ nhau. Run lưu chế độ, từ khoá, từ khoá tiếng Trung và mã yêu cầu của người gọi; tên run trên GitHub Actions cũng mang mã đó để estfstudio nhận ra run của mình.
+
+```sql title="Migration 09 — chế độ chạy"
+alter table runs add column if not exists mode text not null default 'digest'
+  check (mode in ('digest', 'trending', 'search'));
+alter table runs add column if not exists query text;        -- search: as typed (any language)
+alter table runs add column if not exists query_zh text;     -- search: what was searched; null = as typed
+alter table runs add column if not exists request_id text;   -- the caller's tag
+create index if not exists runs_request_id on runs (request_id) where request_id is not null;
+```

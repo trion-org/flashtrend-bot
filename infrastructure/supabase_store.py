@@ -24,6 +24,7 @@ from domain.models import (
     Idea,
     Media,
     PreviousSnapshot,
+    RunRequest,
     RunStats,
     VideoSnapshot,
 )
@@ -117,7 +118,8 @@ class SupabaseStore:
     # ------------------------------------------------------------------- runs
 
     def open_run(
-        self, run_id: str, trigger: str, git_sha: str, region: str, started_at: datetime
+        self, run_id: str, trigger: str, git_sha: str, region: str, started_at: datetime,
+        request: RunRequest | None = None, query_zh: str | None = None,
     ) -> None:
         row = {
             "id": run_id,
@@ -128,6 +130,9 @@ class SupabaseStore:
             "started_at": iso(started_at),
             "status": "running",
         }
+        if request is not None:  # sql/09; the hourly digest keeps the column defaults
+            row |= {"mode": request.mode, "query": request.query, "query_zh": query_zh,
+                    "request_id": request.request_id}
         self._write("open run", lambda: self._db.table("runs").insert(row).execute())
 
     def finish_run(
@@ -495,7 +500,8 @@ class SupabaseStore:
             "read recent runs",
             lambda: self._rows(
                 self._db.table("runs").select("started_at,collected,outliers,ideas_count")
-                .not_.is_("finished_at", "null").order("started_at", desc=True).limit(limit).execute()
+                .eq("mode", "digest").not_.is_("finished_at", "null")
+                .order("started_at", desc=True).limit(limit).execute()
             ),
         )
         return [

@@ -61,6 +61,14 @@ class SqlSyncTest(unittest.TestCase):
         self.assertIn("alter table titles_vi enable row level security", migration)
         self.assertRegex(migration, r"alter table hot_videos add column if not exists title_vi ")
 
+    def test_migration_09_is_the_docs_block_and_adds_the_run_modes(self):
+        block = next(v for k, v in doc_blocks("06-bang-mo-rong.archify.md").items() if k.startswith("Migration 09"))
+        migration = (ROOT / "sql/09_run_modes.sql").read_text(encoding="utf-8")
+        self.assertIn(block, migration)
+        for column in ("mode", "query", "query_zh", "request_id"):
+            self.assertRegex(migration, rf"alter table runs add column if not exists {column} ")
+        self.assertIn("check (mode in ('digest', 'trending', 'search'))", migration)
+
     def test_cleanup_is_safe_on_a_database_without_migration_07(self):
         sql = (ROOT / "sql/03_functions.sql").read_text(encoding="utf-8")
         self.assertIn("exception when undefined_table", sql)  # no hot_videos table yet

@@ -11,7 +11,7 @@ from infrastructure.bilibili_api import BilibiliSource
 from infrastructure.chart import MatplotlibChart
 from infrastructure.dry_run import DryRunStore
 from infrastructure.embedder import SentenceTransformerEmbedder
-from infrastructure.gemini import GeminiTitles, GeminiWriter
+from infrastructure.gemini import GeminiTranslator, GeminiWriter
 from infrastructure.image_host import HttpImageHost, url_is_alive
 from infrastructure.multi_source import MultiSource
 from infrastructure.settings import Settings
@@ -36,7 +36,7 @@ def build_digest(settings: Settings, observer: Observer, dry_run: bool = False) 
         max_ideas=settings.max_ideas,
         git_sha=settings.git_sha,
         trigger=settings.trigger,
-        translator=None if dry_run else GeminiTitles(settings.gemini_api_key, settings.gemini_model),
+        translator=None if dry_run else GeminiTranslator(settings.gemini_api_key, settings.gemini_model),
     )
 
 

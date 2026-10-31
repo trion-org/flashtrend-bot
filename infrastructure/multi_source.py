@@ -11,6 +11,8 @@ from application.observer import NullObserver, Observer
 from domain.models import Channel, HotSeries, VideoSnapshot
 from infrastructure import bilibili_api, youtube_api
 
+SEARCH_PAGES = 2
+
 
 class MultiSource:
     def __init__(self, youtube, bilibili=None, observer: Observer | None = None) -> None:
@@ -36,6 +38,23 @@ class MultiSource:
             seen = {v.id for v in videos}
             videos += [v for v in found if v.id not in seen]
         return videos
+
+    def search(self, query: str, now: datetime, window_hours: int) -> list[VideoSnapshot]:
+        """One query on Bilibili, every length, two pages (40 videos): what a one-off search asks for."""
+        if not self._bilibili:
+            return []
+        found = self._bilibili.collect((query,), now, window_hours, 0, pages=SEARCH_PAGES)
+        self._drain_warnings()
+        self._obs.info(f"Bilibili: {len(found)} video(s) for {query!r}")
+        return found
+
+    def trending(self, now: datetime) -> list[VideoSnapshot]:
+        if not self._bilibili:
+            return []
+        found = self._bilibili.trending(now)
+        self._drain_warnings()
+        self._obs.info(f"Bilibili: {len(found)} video(s) from the hot lists")
+        return found
 
     def hot_series(self, season_types: tuple[int, ...], now: datetime) -> list[HotSeries]:
         """Bilibili's live series ranking; empty without an adapter, a configured type, or an answer."""
