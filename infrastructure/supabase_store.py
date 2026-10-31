@@ -463,7 +463,7 @@ class SupabaseStore:
                 "platform": h.platform, "title": h.title, "url": h.url, "channel_title": h.channel_title,
                 "views": h.views, "duration_sec": h.duration_sec,
                 "published_at": iso(h.published_at) if h.published_at else None, "niche": h.niche,
-                "viral_score": h.viral_score,
+                "viral_score": h.viral_score, "parts": h.parts, "first_part_sec": h.first_part_sec,
             }
             for h in rows
         ]

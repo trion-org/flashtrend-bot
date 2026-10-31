@@ -186,6 +186,8 @@ class HotVideo:
     published_at: datetime | None
     niche: bool
     viral_score: float
+    parts: int | None = None  # parts (分P) of the video, None = not checked; duration_sec is their total
+    first_part_sec: int | None = None  # what the player opens on: part 1
 
 
 @dataclass(frozen=True)

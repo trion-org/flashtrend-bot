@@ -7,6 +7,9 @@ Bilibili has no public API for this, so it reads the web endpoints the site itse
 * ``pgc/web/rank/list`` — the live "hot now" ranking of Chinese-animation (国创) *series*, e.g. 灵笼 第二季
   (``season_type=4``). Measured 2026-10-31: the per-category *video* rankings (``ranking/v2`` with a ``rid``
   other than 0) are frozen at Mar 2025 — every item 576+ days old — so they are not used.
+* ``x/player/pagelist`` — the parts (分P) of one video with each part's length. Search reports the *sum* of
+  the parts, but the player opens part 1, so a 9-hour upload can open on a 7-minute clip. Measured 2026-10-31:
+  10 hot videos, totals identical to search, 4 with several parts (part 1 of 18 was 1 h 56 of 46 h).
 * ``x/web-interface/card`` — a channel's ``fans``, ``archive_count`` and received likes. The endpoint that
   would give a channel's recent plays (``space/wbi/arc/search``) answers ``-352`` to anonymous callers,
   so the baseline is the follower count: a video's ratio is *views per follower*.
@@ -41,6 +44,7 @@ CARD_URL = "https://api.bilibili.com/x/web-interface/card"
 LONG_DURATION_CODE = 4
 LONG_FROM_SEC = 3600  # a minimum this long makes the search ask for ``duration=4``
 SERIES_URL = "https://api.bilibili.com/pgc/web/rank/list"
+PAGELIST_URL = "https://api.bilibili.com/x/player/pagelist"
 BREAKER_AFTER = 3  # consecutive blocked requests after which the rest of the run stops asking
 HEADERS = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)", "Referer": "https://www.bilibili.com/"}
 WAITS = (3.0, 8.0, 20.0)  # seconds before each retry of a blocked request
@@ -136,6 +140,24 @@ class BilibiliSource:
                 if video:
                     found.setdefault(video.id, video)
         return list(found.values())
+
+    def part_durations(self, bvids: list[str]) -> dict[str, list[int]]:
+        """{bvid: [seconds of part 1, part 2, …]} for the videos Bilibili answered for (others: absent)."""
+        out: dict[str, list[int]] = {}
+        for i, bvid in enumerate(bvids):
+            if i:
+                self._sleep(self._pause)
+            try:
+                data = self._get(PAGELIST_URL, {"bvid": bvid})
+            except BilibiliUnavailable as exc:
+                self.warnings.append(f"Bilibili parts of {bvid} skipped: {exc}")
+                if self._tripped():
+                    break
+                continue
+            parts = [_int(p.get("duration")) for p in data.get("data") or [] if isinstance(p, dict)]
+            if parts and sum(parts) > 0:
+                out[bvid] = parts
+        return out
 
     def series_ranking(self, season_types: tuple[int, ...], limit: int = 10) -> list[HotSeries]:
         """The live "hot now" series ranking (``season_type`` 4 = 国创), most-watched first."""

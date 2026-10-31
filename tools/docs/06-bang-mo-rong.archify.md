@@ -146,6 +146,8 @@ create table if not exists hot_videos (
 );
 create index if not exists hot_videos_created on hot_videos (created_at desc);
 alter table hot_videos enable row level security;
+alter table hot_videos add column if not exists parts smallint check (parts >= 1);   -- null = not checked; duration_sec is the total of the parts
+alter table hot_videos add column if not exists first_part_sec int check (first_part_sec >= 0);   -- the player opens part 1
 
 alter table app_config add column if not exists bilibili_series_types int[] not null default '{}';
 alter table app_config add column if not exists niche_terms text[] not null default '{}';
@@ -170,6 +172,7 @@ alter table app_config add constraint app_config_search_window_hours_check
 | `app_config.niche_terms` | Từ trong tiêu đề hoặc mô tả để coi video thuộc ngách |
 | `app_config.niche_boost` | Hệ số ưu tiên ngách khi xếp ý tưởng và danh sách hot (không đổi `viral_score`) |
 | `app_config.youtube_search_every_hours` | Tìm từ khoá YouTube chỉ khi giờ chia hết N: giữ quota 10.000 đơn vị/ngày |
+| `hot_videos.parts` · `hot_videos.first_part_sec` | Số phần (分P) của video hot và độ dài phần 1; rỗng = chưa kiểm. `duration_sec` là tổng các phần |
 | `app_config.min_duration_sec` | Bỏ video ngắn hơn N giây và chỉ yêu cầu video dài từ nền tảng; 0 = không lọc |
 | `app_config.niche_only` | Bỏ video không thuộc ngách trước khi chấm điểm |
 | `app_config.niche_exclude_terms` | Tiêu đề có từ này thì không thuộc ngách (khoá học, thuyết minh) |

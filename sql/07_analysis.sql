@@ -30,6 +30,8 @@ create table if not exists hot_videos (
 );
 create index if not exists hot_videos_created on hot_videos (created_at desc);
 alter table hot_videos enable row level security;
+alter table hot_videos add column if not exists parts smallint check (parts >= 1);   -- null = not checked; duration_sec is the total of the parts
+alter table hot_videos add column if not exists first_part_sec int check (first_part_sec >= 0);   -- the player opens part 1
 
 alter table app_config add column if not exists bilibili_series_types int[] not null default '{}';
 alter table app_config add column if not exists niche_terms text[] not null default '{}';

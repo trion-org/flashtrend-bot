@@ -54,6 +54,7 @@ EMBEDDING_TTL_DEFAULT = 90
 EMBEDDING_TTL_SHRUNK = 60
 DESCRIPTION_MAX_CHARS = 500
 HOT_LIST_SIZE = 10  # hot_videos rows per run
+HOT_SPARE = 5  # extra candidates checked, to fill the list when a checked video turns out too short
 CARD_SIZE = 8  # videos on the top card
 HISTORY_RUNS = 48  # past runs on the timeline chart
 
@@ -398,14 +399,19 @@ class RunDigest:
             ch = channels.get(c.video.channel_id)
             return ch.title if ch else c.video.channel_id
 
-        bilibili = [c for c in ranked if c.video.platform == "bilibili"][:HOT_LIST_SIZE]
+        bilibili = [c for c in ranked if c.video.platform == "bilibili"][: HOT_LIST_SIZE + HOT_SPARE]
+        parts = self._verified_parts(run_id, [c.video.id for c in bilibili])
+        shown: list[Candidate] = []
+        for c in bilibili:
+            total = sum(parts.get(c.video.id, ()))
+            if parts.get(c.video.id) and total < config.min_duration_sec:
+                self._obs.info(f"{run_id}: {c.video.id} left out of the hot list: its parts add up to "
+                               f"{total / 3600:.1f} h")
+                continue
+            shown.append(c)
         rows = [
-            HotVideo(
-                "video", i, c.video.id, c.video.platform, c.video.title, c.video.url, title_of(c),
-                c.video.views, c.video.duration_sec, c.video.published_at, niche.get(c.video.id, False),
-                c.viral_score,
-            )
-            for i, c in enumerate(bilibili, start=1)
+            self._hot_row(i, c, title_of(c), niche.get(c.video.id, False), parts.get(c.video.id))
+            for i, c in enumerate(shown[:HOT_LIST_SIZE], start=1)
         ]
         rows += self._series_rows(run_id, config, now)
         if rows:
@@ -417,6 +423,30 @@ class RunDigest:
             Idea(candidate=c, channel_title=title_of(c), cluster_id="hot", niche=niche.get(c.video.id, False))
             for c in ranked[:CARD_SIZE]
         ]
+
+    @staticmethod
+    def _hot_row(rank: int, c: Candidate, channel: str, in_niche: bool, parts: list[int] | None) -> HotVideo:
+        """A hot-list row; a checked video carries the total of its parts as its length, how many parts there
+        are, and how long part 1 is (what the player opens on)."""
+        total = sum(parts) if parts else c.video.duration_sec
+        return HotVideo(
+            "video", rank, c.video.id, c.video.platform, c.video.title, c.video.url, channel,
+            c.video.views, total, c.video.published_at, in_niche, c.viral_score,
+            parts=len(parts) if parts else None, first_part_sec=parts[0] if parts else None,
+        )
+
+    def _verified_parts(self, run_id: str, video_ids: list[str]) -> dict[str, list[int]]:
+        """Part lengths of the hot-list candidates; {} when the source cannot answer (rows stay unchecked)."""
+        if not video_ids:
+            return {}
+        try:
+            found = self._source.video_parts(video_ids)
+        except Exception as exc:  # noqa: BLE001 - the list is still useful without the counts
+            self._obs.warn(f"{run_id}: part lengths not checked ({type(exc).__name__}: {exc})")
+            return {}
+        if len(found) < len(video_ids):
+            self._obs.warn(f"{run_id}: parts checked for {len(found)} of {len(video_ids)} hot video(s)")
+        return found
 
     def _relevant(self, run_id: str, videos: list[VideoSnapshot], config: AppConfig) -> list[VideoSnapshot]:
         """Keep only what the feed is about: long enough (a compilation, not a clip) and, if asked, the niche.

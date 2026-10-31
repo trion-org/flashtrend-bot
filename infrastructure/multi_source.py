@@ -45,6 +45,16 @@ class MultiSource:
         self._drain_warnings()
         return series
 
+    def video_parts(self, video_ids: list[str]) -> dict[str, list[int]]:
+        """``{video id: [part seconds…]}`` for Bilibili ids (``bi_BV…``) Bilibili answered for."""
+        if not self._bilibili:
+            return {}
+        prefix = bilibili_api.PREFIX
+        wanted = {v.removeprefix(prefix): v for v in video_ids if v.startswith(prefix)}
+        found = self._bilibili.part_durations(list(wanted))
+        self._drain_warnings()
+        return {wanted[bvid]: parts for bvid, parts in found.items()}
+
     def fetch_channels(self, channel_ids: list[str], now: datetime) -> list[Channel]:
         bili = [c for c in channel_ids if c.startswith(bilibili_api.PREFIX)]
         yt = [c for c in channel_ids if c.startswith(youtube_api.PREFIX)]

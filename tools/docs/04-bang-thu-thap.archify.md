@@ -95,6 +95,8 @@ Ngách cần là **tuyển tập hoạt hình dài từ 4 giờ trở lên** (c�
 
 Giờ không tìm YouTube vẫn đọc Bilibili (không tốn quota), nên danh sách hot luôn mới. Snapshot theo giờ cho vận tốc và gia tốc view tốt hơn nhiều so với một lần mỗi ngày.
 
+**Thời lượng và số phần.** Bilibili báo thời lượng tìm kiếm là *tổng các phần* (分P), nhưng trình phát mở phần 1. Đo ngày 31/10/2026 trên 10 video hot: tổng khớp tuyệt đối với tìm kiếm, nhưng 4 video nhiều phần, ví dụ video 9 giờ 38 phút có phần 1 chỉ 7 phút, video 46 giờ gồm 18 phần mà phần 1 dài 1 giờ 56. Vì vậy mỗi video hot được hỏi `x/player/pagelist` (nhẹ, không bị chặn như `view`) để ghi `parts` và `first_part_sec`; tổng các phần là `duration_sec`. Video có tổng thực tế dưới `min_duration_sec` bị bỏ và một ứng viên dự phòng (thêm 5) thế chỗ. Hỏi không được thì hàng đó vẫn hiện nhưng không có số phần, không đoán.
+
 **Danh sách hot.** Mỗi lần chạy ghi vào `hot_videos` tối đa 10 video Bilibili hot nhất theo độ ưu tiên (`kind = video`) và 10 series 国创 đứng đầu bảng xếp hạng sống của Bilibili (`kind = series`, ví dụ 灵笼 第二季). Đo ngày 31/10/2026: bảng xếp hạng *video* theo từng danh mục (`ranking/v2` với `rid` khác 0) đã đứng im từ tháng 3/2025, mọi mục cũ hơn 576 ngày, nên không dùng; chỉ bảng series còn sống. Bảng phẳng, có tiêu đề, link, kênh, lượt xem, thời lượng, cờ ngách. estfstudio đọc bảng này cho `/analysis`; nó không phụ thuộc `ideas` vì các lần chạy theo giờ thường không có ý tưởng mới (video đã đề xuất trong 90 ngày thì bị loại).
 
 **Tám biểu đồ** (ảnh PNG 1200×675 lên image host, `media.kind = 'analysis'`, có `caption` và `position`; mỗi ảnh ghi giờ chạy trong hình nên không bao giờ trùng `sha256` với lần khác):

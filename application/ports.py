@@ -59,6 +59,9 @@ class VideoSource(Protocol):
     def hot_series(self, season_types: tuple[int, ...], now: datetime) -> list[HotSeries]:
         """Bilibili's live series ranking (4 = 国创); empty when it is off or unreachable."""
 
+    def video_parts(self, video_ids: list[str]) -> dict[str, list[int]]:
+        """Seconds of each part of a Bilibili video (``bi_BV…``); an id it could not check is absent."""
+
     def fetch_channels(self, channel_ids: list[str], now: datetime) -> list[Channel]:
         """A3 baselines for the channels the cache does not cover (``yt_UC…`` / ``bi_<mid>`` ids)."""
 

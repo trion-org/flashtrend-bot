@@ -78,6 +78,20 @@ class SearchTest(unittest.TestCase):
         self.assertTrue(all(q["duration"] == ["4"] for q in qs))  # Bilibili's "longer than 60 minutes"
         self.assertEqual([v.native_id for v in got], ["BV1", "BV2"])
 
+    def test_part_durations_lists_each_part_and_leaves_out_what_it_could_not_check(self):
+        pages = {"code": 0, "data": [{"page": 1, "duration": 420}, {"page": 2, "duration": 34260}]}
+        src, _ = source(pages, {"code": -404, "message": "no"}, {"code": -404}, {"code": -404}, {"code": -404})
+        got = src.part_durations(["BV1", "BV2"])
+        self.assertEqual(got, {"BV1": [420, 34260]})
+        self.assertIn("BV2", " ".join(src.warnings))
+        self.assertIn("bvid=BV1", src._fetch.urls[0])
+        self.assertIn("/x/player/pagelist", src._fetch.urls[0])
+
+    def test_part_durations_through_the_multi_source_uses_the_prefixed_ids(self):
+        src, _ = source({"code": 0, "data": [{"duration": 100}, {"duration": 200}]})
+        multi = MultiSource(FakeSource(), src)
+        self.assertEqual(multi.video_parts(["bi_BV1", "yt_x"]), {"bi_BV1": [100, 200]})
+
     def test_no_minimum_keeps_one_unfiltered_page(self):
         src, _ = source(ok([]))
         src.collect(("国漫",), NOW, 48)

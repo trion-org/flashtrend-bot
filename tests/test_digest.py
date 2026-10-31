@@ -281,6 +281,42 @@ class HotListTest(unittest.TestCase):
         scores = [h.viral_score for h in rows]
         self.assertEqual(scores, sorted(scores, reverse=True))
 
+    def test_a_checked_video_carries_the_total_its_part_count_and_part_one(self):
+        source = FakeSource()
+        source.parts = {"bi_BV11": [420, 34260], "bi_BV9": [7200]}
+        store, _ = self.run_with(AppConfig(), source=source)
+        rows = {h.video_id: h for h in store.hot_videos[RUN_ID]}
+        self.assertEqual((rows["bi_BV11"].duration_sec, rows["bi_BV11"].parts, rows["bi_BV11"].first_part_sec),
+                         (34680, 2, 420))
+        self.assertEqual((rows["bi_BV9"].parts, rows["bi_BV9"].first_part_sec), (1, 7200))
+        self.assertIsNone(rows["bi_BV10"].parts)  # not answered: shown as it came, never guessed
+
+    def test_the_candidates_asked_about_are_the_ten_plus_a_few_spare(self):
+        source = FakeSource()
+        self.run_with(AppConfig(), source=source)
+        self.assertEqual(len(source.parts_asked), 12)  # every bilibili candidate here (12 < 10 + spare)
+
+    def test_a_video_whose_parts_add_up_to_less_than_the_minimum_is_left_out_and_a_spare_takes_its_place(self):
+        source = FakeSource()
+        source.parts = {"bi_BV11": [600], "bi_BV10": [600]}  # the two biggest are really ten-minute videos
+        store, _ = self.run_with(AppConfig(min_duration_sec=3600), source=source)
+        ids = [h.video_id for h in store.hot_videos[RUN_ID]]
+        self.assertNotIn("bi_BV11", ids)
+        self.assertNotIn("bi_BV10", ids)
+        self.assertEqual(len(ids), 10)
+
+    def test_a_source_that_cannot_check_parts_never_fails_the_run(self):
+        source = FakeSource()
+
+        def boom(ids):
+            raise RuntimeError("blocked")
+
+        source.video_parts = boom
+        store, obs = self.run_with(AppConfig(), source=source)
+        self.assertEqual(len(store.hot_videos[RUN_ID]), 10)
+        self.assertTrue(all(h.parts is None for h in store.hot_videos[RUN_ID]))
+        self.assertTrue(any("not checked" in m for m in obs.lines))
+
     def test_the_niche_outranks_a_bigger_video_that_is_not(self):
         plain, _ = self.run_with(AppConfig())
         boosted, _ = self.run_with(AppConfig(niche_terms=("3D国漫",), niche_boost=100.0))

@@ -86,6 +86,8 @@ class FakeSource:
         self.series = list(series or [])
         self.series_error = series_error
         self.series_args: tuple = ()
+        self.parts: dict[str, list[int]] = {}  # video id -> seconds of each part
+        self.parts_asked: list[str] = []
         self.videos = sample_videos() if videos is None else videos
         self.channels = {c.id: c for c in (sample_channels() if channels is None else channels)}
         self.error = error
@@ -105,6 +107,10 @@ class FakeSource:
         if self.series_error:
             raise self.series_error
         return list(self.series)
+
+    def video_parts(self, video_ids):
+        self.parts_asked = list(video_ids)
+        return {v: list(p) for v, p in self.parts.items() if v in video_ids}
 
     def fetch_channels(self, channel_ids, now):
         self.fetched.append(list(channel_ids))
