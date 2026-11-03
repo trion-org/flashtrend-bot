@@ -16,7 +16,6 @@ from datetime import datetime
 from application.observer import NullObserver, Observer
 from application.ports import (
     AnalysisRenderer,
-    ChartRenderer,
     DigestStore,
     Embedder,
     IdeaBrief,
@@ -58,7 +57,6 @@ EMBEDDING_TTL_SHRUNK = 60
 DESCRIPTION_MAX_CHARS = 500
 HOT_LIST_SIZE = 10  # hot_videos rows per run
 HOT_SPARE = 5  # extra candidates checked, to fill the list when a checked video turns out too short
-CARD_SIZE = 8  # videos on the top card
 HISTORY_RUNS = 48  # past runs on the timeline chart
 GROWTH_POINTS = 72  # earlier snapshots per hot video on the growth chart (three days of hourly runs)
 
@@ -80,7 +78,6 @@ class RunDigest:
         embedder: Embedder,
         writer: IdeaWriter | None,
         image_host: ImageHost | None = None,
-        chart: ChartRenderer | None = None,
         analysis: AnalysisRenderer | None = None,
         observer: Observer | None = None,
         clock: Callable[[], datetime] | None = None,
@@ -96,7 +93,6 @@ class RunDigest:
         self._embedder = embedder
         self._writer = writer
         self._image_host = image_host
-        self._chart = chart
         self._analysis = analysis
         self._obs = observer or NullObserver()
         self._clock = clock or now_vn
@@ -243,10 +239,10 @@ class RunDigest:
         if ideas:
             self._store.insert_ideas(run_id, ideas)
 
-        picks, listed = self._hot(run_id, config, now, candidates, channels, niche)
+        listed = self._hot(run_id, config, now, candidates, channels, niche)
         # this run on the timeline, counted like the stored ones (videos collected, not only those scored)
         current = None if request.ad_hoc else RunPoint(now, stats.collected, stats.outliers, len(ideas))
-        chart_media_id = self._images(run_id, config, now, candidates, ideas, picks, current, listed,
+        chart_media_id = self._images(run_id, config, now, candidates, ideas, current, listed,
                                       scope_of(request, query_zh))
         return ideas, chart_media_id
 
@@ -434,9 +430,9 @@ class RunDigest:
         candidates: list[Candidate],
         channels: dict[str, Channel],
         niche: dict[str, bool],
-    ) -> tuple[list[Idea], list[Candidate]]:
-        """Hottest by priority (niche first): Bilibili's go to ``hot_videos``, the top of all to the card.
-        Returns the card's picks and the hot list's videos, in its order (the growth chart draws those)."""
+    ) -> list[Candidate]:
+        """Hottest by priority (niche first): Bilibili's go to ``hot_videos``. Returns the hot list's videos,
+        in its order (the growth panel draws those)."""
         ranked = sorted(candidates, key=lambda c: _priority(c, config, niche), reverse=True)
 
         def title_of(c: Candidate) -> str:
@@ -459,9 +455,9 @@ class RunDigest:
             for i, c in enumerate(listed, start=1)
         ]
         rows += self._series_rows(run_id, config, now)
-        # every title a Vietnamese reader meets — the hot list, the card, the charts' hot videos — translated
-        cards, hot = ranked[:CARD_SIZE], [c for c in candidates if c.passed_z]
-        vi = self._titles_vi(run_id, [r.title for r in rows] + [c.video.title for c in (*cards, *hot)])
+        # every title a Vietnamese reader meets — the hot list, the charts' hot videos — translated
+        hot = [c for c in candidates if c.passed_z]
+        vi = self._titles_vi(run_id, [r.title for r in rows] + [c.video.title for c in hot])
         rows = [replace(r, title_vi=vi.get(r.title)) for r in rows]
         for c in candidates:
             c.title_vi = vi.get(c.video.title)
@@ -470,11 +466,7 @@ class RunDigest:
                 self._store.insert_hot_videos(run_id, rows)
             except Exception as exc:  # noqa: BLE001 - sql/07 not applied yet, or a blip: the digest goes on
                 self._obs.warn(f"{run_id}: hot_videos not written ({type(exc).__name__}: {exc})")
-        picks = [
-            Idea(candidate=c, channel_title=title_of(c), cluster_id="hot", niche=niche.get(c.video.id, False))
-            for c in ranked[:CARD_SIZE]
-        ]
-        return picks, listed
+        return listed
 
     @staticmethod
     def _hot_row(rank: int, c: Candidate, channel: str, in_niche: bool, parts: list[int] | None) -> HotVideo:
@@ -576,59 +568,44 @@ class RunDigest:
         now: datetime,
         candidates: list[Candidate],
         ideas: list[Idea],
-        picks: list[Idea],
         current: RunPoint | None = None,
         listed: list[Candidate] | None = None,
         scope: str | None = None,
     ) -> str | None:
-        """The top card and the analysis charts → image host → ``media``. Never fails the run (docs/07).
-        ``current`` = this run on the timeline of the hourly runs; None (a one-off look) draws no timeline.
-        ``listed`` = the hot list (the growth chart); ``scope`` = what a one-off look looked at."""
-        if not (self._image_host and (self._chart or self._analysis) and picks):
+        """The analysis image → image host → ``media``; its id (the run's ``chart_media_id``), or None. Never
+        fails the run (docs/07). ``current`` = this run on the timeline of the hourly runs; None (a one-off
+        look) draws no timeline. ``listed`` = the hot list (the growth panel); ``scope`` = what a one-off look
+        looked at."""
+        if not (self._image_host and self._analysis and candidates):
             return None
         if self._trigger == "schedule" and now.hour % max(1, config.analysis_every_hours):
             self._obs.info(
                 f"{run_id}: charts skipped (every {config.analysis_every_hours} h: image host load)"
             )
             return None
-        card_id: str | None = None
-        if self._chart:
-            try:
-                image = self._chart.render(run_id, picks, scope)
-                if image:
-                    card_id = self._publish(
-                        run_id, image.png, image.width, image.height, "top", "Video đang hot", 1
-                    )
-            except Exception as exc:  # noqa: BLE001
-                self._obs.warn(f"{run_id}: top chart skipped ({type(exc).__name__}: {exc})")
-        if self._analysis:
-            try:
-                history = self._store.recent_runs(HISTORY_RUNS) if current else []
-            except Exception as exc:  # noqa: BLE001 - only the timeline chart needs it
-                self._obs.warn(f"{run_id}: run history unavailable ({type(exc).__name__}: {exc})")
-                history = []
-            listed = listed or []
-            hot = [c.video.id for c in listed]
-            try:
-                growth = self._store.previous_snapshots(hot, now, GROWTH_POINTS) if hot else {}
-            except Exception as exc:  # noqa: BLE001 - only the growth chart needs them
-                self._obs.warn(f"{run_id}: snapshots for the growth chart unavailable "
-                               f"({type(exc).__name__}: {exc})")
-                growth = {}
-            try:
-                points = [*history, current] if current else history
-                images = self._analysis.render(run_id, now, candidates, ideas, points, growth, listed, scope)
-            except Exception as exc:  # noqa: BLE001
-                self._obs.warn(f"{run_id}: analysis charts skipped ({type(exc).__name__}: {exc})")
-                images = []
-            done = 0
-            for img in images:
-                if self._publish(
-                    run_id, img.png, img.width, img.height, img.slug, img.caption, img.position
-                ):
-                    done += 1
-            self._obs.info(f"{run_id}: {done}/{len(images)} analysis chart(s) published")
-        return card_id
+        try:
+            history = self._store.recent_runs(HISTORY_RUNS) if current else []
+        except Exception as exc:  # noqa: BLE001 - only the timeline panel needs it
+            self._obs.warn(f"{run_id}: run history unavailable ({type(exc).__name__}: {exc})")
+            history = []
+        listed = listed or []
+        hot = [c.video.id for c in listed]
+        try:
+            growth = self._store.previous_snapshots(hot, now, GROWTH_POINTS) if hot else {}
+        except Exception as exc:  # noqa: BLE001 - only the growth panel needs them
+            self._obs.warn(f"{run_id}: snapshots for the growth chart unavailable "
+                           f"({type(exc).__name__}: {exc})")
+            growth = {}
+        try:
+            points = [*history, current] if current else history
+            images = self._analysis.render(run_id, now, candidates, ideas, points, growth, listed, scope)
+        except Exception as exc:  # noqa: BLE001
+            self._obs.warn(f"{run_id}: analysis charts skipped ({type(exc).__name__}: {exc})")
+            images = []
+        published = [media_id for img in images if (media_id := self._publish(
+            run_id, img.png, img.width, img.height, img.slug, img.caption, img.position))]
+        self._obs.info(f"{run_id}: {len(published)}/{len(images)} analysis image(s) published")
+        return published[0] if published else None
 
     def _publish(
         self, run_id: str, png: bytes, width: int, height: int, slug: str, caption: str, position: int

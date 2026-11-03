@@ -8,7 +8,6 @@ from application.observer import Observer
 from domain.clock import now_vn
 from infrastructure.analysis_charts import AnalysisCharts
 from infrastructure.bilibili_api import BilibiliSource
-from infrastructure.chart import MatplotlibChart
 from infrastructure.dry_run import DryRunStore
 from infrastructure.embedder import SentenceTransformerEmbedder
 from infrastructure.gemini import GeminiTranslator, GeminiWriter
@@ -30,7 +29,6 @@ def build_digest(settings: Settings, observer: Observer, dry_run: bool = False) 
             settings.gemini_api_key, settings.gemini_model, settings.lang
         ),
         image_host=HttpImageHost(settings.s3_url) if settings.s3_url and not dry_run else None,
-        chart=None if dry_run else MatplotlibChart(),
         analysis=None if dry_run else AnalysisCharts(),
         observer=observer,
         max_ideas=settings.max_ideas,

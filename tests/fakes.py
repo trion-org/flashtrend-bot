@@ -172,11 +172,20 @@ class FakeImageHost:
         return f"https://img.example/{filename}"
 
 
-class FakeChart:
-    def render(self, run_id, ideas, scope=None):
-        from application.ports import ChartImage
+class FakeAnalysis:
+    """The analysis renderer: one image, as the real one draws, and what it was given."""
 
-        return ChartImage(png=b"\x89PNG-" + run_id.encode(), width=10, height=5)
+    def __init__(self, error=None):
+        self.error, self.calls = error, []
+
+    def render(self, run_id, now, candidates, ideas, history, growth=None, listed=None, scope=None):
+        from application.ports import AnalysisImage
+
+        self.calls.append((len(candidates), len(history)))
+        self.history, self.growth, self.listed, self.scope = history, growth, listed, scope
+        if self.error:
+            raise self.error
+        return [AnalysisImage("dashboard", "Bảng phân tích", 1, b"\x89PNG-" + run_id.encode(), 10, 5)]
 
 
 class FakeStore:

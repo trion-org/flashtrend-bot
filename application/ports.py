@@ -36,13 +36,6 @@ class IdeaBrief:
     duplicates_count: int
 
 
-@dataclass(frozen=True)
-class ChartImage:
-    png: bytes
-    width: int
-    height: int
-
-
 class VideoSource(Protocol):
     def collect(
         self,
@@ -98,10 +91,6 @@ class ImageHost(Protocol):
         """POST the image, return its public URL."""
 
 
-class ChartRenderer(Protocol):
-    def render(self, run_id: str, ideas: list[Idea], scope: str | None = None) -> ChartImage | None: ...
-
-
 @dataclass(frozen=True)
 class RunPoint:
     """One past run, for the timeline chart."""
@@ -116,7 +105,7 @@ class RunPoint:
 class AnalysisImage:
     slug: str
     caption: str  # Vietnamese title, shown by estfstudio
-    position: int  # 1 is the top-ideas chart
+    position: int  # display order (the analysis image is 1)
     png: bytes
     width: int
     height: int

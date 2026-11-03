@@ -22,7 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--dry-run", action="store_true",
                      help="read real data, write nothing, skip Gemini and image upload")
     run.add_argument("--output-dir", default=None,
-                     help="also write <run_id>_digest.json and the chart PNG here (debug only)")
+                     help="also write <run_id>_digest.json here (debug only)")
     run.add_argument("--mode", default="digest", help=f"what to look for: {' | '.join(RUN_MODES)} "
                      "(empty = digest)")
     run.add_argument("--query", default=None, help="search mode: what to search for, any language")
@@ -71,15 +71,7 @@ def main(argv: list[str] | None = None, observer: Observer | None = None) -> int
         return EXIT_RUN_ERROR
 
     if args.output_dir:
-        chart_png = None
-        try:
-            from infrastructure.chart import MatplotlibChart
-
-            image = MatplotlibChart().render(result.run_id, result.ideas)
-            chart_png = image.png if image else None
-        except Exception as exc:  # noqa: BLE001 - debug export only
-            obs.warn(f"chart not written: {type(exc).__name__}: {exc}")
-        for path in write_output(args.output_dir, result, chart_png):
+        for path in write_output(args.output_dir, result):
             obs.info(f"wrote {path}")
 
     if args.dry_run:  # Gemini was skipped on purpose, so LLM_DISABLED is the expected outcome

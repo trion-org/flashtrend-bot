@@ -8,7 +8,7 @@ from domain.errors import FlashTrendError
 from domain.models import QUERY_MAX_CHARS, AppConfig, HotSeries, PreviousSnapshot, RunRequest
 from tests.fakes import (
     NOW,
-    FakeChart,
+    FakeAnalysis,
     FakeEmbedder,
     FakeImageHost,
     FakeSource,
@@ -32,13 +32,13 @@ class Obs:
     warn = info
 
 
-def make(store=None, source=None, writer="default", host=None, chart=True, analysis=None, **kw):
+def make(store=None, source=None, writer="default", host=None, analysis="default", **kw):
     store = store or FakeStore()
     writer = FakeWriter() if writer == "default" else writer
     obs = Obs()
     uc = RunDigest(
         store, source or FakeSource(), FakeEmbedder(), writer,
-        image_host=host, chart=FakeChart() if chart else None, analysis=analysis,
+        image_host=host, analysis=FakeAnalysis() if analysis == "default" else analysis,
         observer=obs, clock=lambda: NOW, sleep=lambda s: None, **kw,
     )
     return uc, store, obs
@@ -100,11 +100,11 @@ class HappyPathTest(unittest.TestCase):
         self.assertEqual(sorted(self.store.nearest_calls[0]), ["yt_vid001", "yt_vid002", "yt_vid004"])
 
     def test_chart_uploaded_once_and_linked(self):
-        self.assertEqual(self.host.uploads, [f"{RUN_ID}_top.png"])
+        self.assertEqual(self.host.uploads, [f"{RUN_ID}_dashboard.png"])  # the run's one picture
         media_id = self.store.runs[RUN_ID]["chart_media_id"]
         m = self.store.media[media_id]
         self.assertEqual((m.owner, m.kind, m.run_id), ("flashtrend", "analysis", RUN_ID))
-        self.assertEqual((m.caption, m.position), ("Video đang hot", 1))
+        self.assertEqual((m.caption, m.position), ("Bảng phân tích", 1))
         self.assertTrue(media_id.startswith("img_") and len(media_id) == 20)
 
     def test_no_thumbnail_is_uploaded(self):
@@ -176,7 +176,7 @@ class FailureTest(unittest.TestCase):
         r = uc.run()
         self.assertEqual(r.status, "ok")
         self.assertIsNone(store.runs[RUN_ID]["chart_media_id"])
-        self.assertTrue(any("top chart skipped" in line for line in obs.lines))
+        self.assertTrue(any("dashboard chart skipped" in line for line in obs.lines))
 
     def test_same_chart_sha_reuses_the_media_row(self):
         host = FakeImageHost()
@@ -194,29 +194,15 @@ class FailureTest(unittest.TestCase):
         self.assertEqual(store.media, {})
 
 
-class FakeAnalysis:
-    def __init__(self, error=None):
-        self.error, self.calls = error, []
-
-    def render(self, run_id, now, candidates, ideas, history, growth=None, listed=None, scope=None):
-        from application.ports import AnalysisImage
-
-        self.calls.append((len(candidates), len(history)))
-        self.history, self.growth, self.listed, self.scope = history, growth, listed, scope
-        if self.error:
-            raise self.error
-        return [AnalysisImage(f"c{n}", f"Biểu đồ {n}", n, b"\x89PNG-%d" % n, 10, 5) for n in (2, 3)]
-
-
 class AnalysisChartsTest(unittest.TestCase):
-    def test_every_chart_becomes_an_analysis_media_row_with_caption_and_position(self):
+    def test_the_analysis_image_is_the_runs_one_media_row_with_caption_and_position(self):
         analysis, host = FakeAnalysis(), FakeImageHost()
         uc, store, _ = make(host=host, analysis=analysis)
         uc.run()
-        rows = sorted(store.media.values(), key=lambda m: m.position)
-        self.assertEqual([(m.kind, m.position, m.caption) for m in rows],
-                         [("analysis", 1, "Video đang hot"), ("analysis", 2, "Biểu đồ 2"), ("analysis", 3, "Biểu đồ 3")])
+        rows = list(store.media.values())
+        self.assertEqual([(m.kind, m.position, m.caption) for m in rows], [("analysis", 1, "Bảng phân tích")])
         self.assertTrue(all(m.run_id == RUN_ID and m.owner == "flashtrend" for m in rows))
+        self.assertEqual(store.runs[RUN_ID]["chart_media_id"], rows[0].id)  # the run links its picture
         self.assertEqual(analysis.calls, [(5, 1)])  # all scored candidates; no stored run yet, only this one
 
     def test_the_timeline_gets_the_stored_run_history(self):
@@ -243,7 +229,7 @@ class AnalysisChartsTest(unittest.TestCase):
     def test_a_crashing_renderer_only_loses_the_charts(self):
         uc, store, obs = make(host=FakeImageHost(), analysis=FakeAnalysis(RuntimeError("matplotlib")))
         self.assertEqual(uc.run().status, "ok")
-        self.assertEqual([m.position for m in store.media.values()], [1])  # the card still went out
+        self.assertEqual(store.media, {})  # nothing to publish, and the run goes on
         self.assertTrue(any("analysis charts skipped" in line for line in obs.lines))
 
     def test_a_scheduled_run_draws_only_on_the_configured_hours(self):
@@ -369,7 +355,7 @@ class RunModesTest(unittest.TestCase):
 
 
 class TitleTranslationTest(unittest.TestCase):
-    def test_the_hot_list_card_and_hot_videos_carry_their_titles_in_vietnamese_translated_once(self):
+    def test_the_hot_list_and_hot_videos_carry_their_titles_in_vietnamese_translated_once(self):
         store, translator = FakeStore(), FakeTranslator()
         make(store=store, translator=translator)[0].run()
         self.assertEqual(len(translator.asked), 1)  # one request for the whole run
@@ -502,26 +488,6 @@ class HotListTest(unittest.TestCase):
         store, obs = self.run_with(AppConfig(bilibili_series_types=(4,)), source=source)
         self.assertTrue(all(h.kind == "video" for h in store.hot_videos[RUN_ID]))
         self.assertTrue(any("series ranking skipped" in m for m in obs.lines))
-
-    def test_the_card_shows_the_hottest_of_all_platforms(self):
-        seen = []
-
-        class SpyChart:
-            def render(self, run_id, ideas, scope=None):
-                from application.ports import ChartImage
-
-                seen.append([(i.candidate.video.platform, i.niche) for i in ideas])
-                return ChartImage(png=b"\x89PNG", width=1, height=1)
-
-        more, more_ch = self.bilibili_pair()
-        source = FakeSource(FakeSource().videos + more, list(FakeSource().channels.values()) + more_ch)
-        config = AppConfig(niche_terms=("3D国漫",), niche_boost=100.0)
-        uc, _, _ = make(store=FakeStore(config), source=source, host=FakeImageHost())
-        uc._chart = SpyChart()
-        uc.run()
-        self.assertEqual(len(seen[0]), 8)  # the card holds eight videos …
-        self.assertEqual([n for _, n in seen[0]], [True] * 6 + [False] * 2)  # the six niche videos lead it
-        self.assertIn("youtube", {p for p, _ in seen[0]})  # the rest is the hottest of any platform
 
     def test_a_hot_list_that_cannot_be_written_never_fails_the_run(self):
         store = FakeStore()

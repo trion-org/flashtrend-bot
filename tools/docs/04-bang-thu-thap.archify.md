@@ -83,7 +83,7 @@ Ngách cần là **tuyển tập hoạt hình dài từ 4 giờ trở lên** (c�
 
 ## Ưu tiên ngách, chạy mỗi giờ và biểu đồ phân tích {#uu-tien}
 
-**Ưu tiên ngách.** Video khớp `niche_terms` trong tiêu đề hoặc mô tả được nhân `niche_boost` khi xếp thứ tự ý tưởng, danh sách hot và thẻ đầu. Điểm `viral_score` lưu trong database không đổi, nên so sánh với các lần chạy cũ vẫn đúng. Từ khoá tìm kiếm một mình không đủ để coi là ngách (nó chỉ cho biết đã gõ gì, không cho biết kết quả là gì). Từ `3D动画` đứng một mình bị bỏ khỏi `niche_terms` vì khớp cả video súng và kỹ thuật.
+**Ưu tiên ngách.** Video khớp `niche_terms` trong tiêu đề hoặc mô tả được nhân `niche_boost` khi xếp thứ tự ý tưởng và danh sách hot. Điểm `viral_score` lưu trong database không đổi, nên so sánh với các lần chạy cũ vẫn đúng. Từ khoá tìm kiếm một mình không đủ để coi là ngách (nó chỉ cho biết đã gõ gì, không cho biết kết quả là gì). Từ `3D动画` đứng một mình bị bỏ khỏi `niche_terms` vì khớp cả video súng và kỹ thuật.
 
 **Chạy mỗi giờ đổi ba ngân sách**, nên các việc nặng chạy thưa hơn (giờ tính theo giờ Việt Nam; chạy tay luôn làm đủ):
 
@@ -99,20 +99,21 @@ Giờ không tìm YouTube vẫn đọc Bilibili (không tốn quota), nên danh 
 
 **Danh sách hot.** Mỗi lần chạy ghi vào `hot_videos` tối đa 10 video Bilibili hot nhất theo độ ưu tiên (`kind = video`) và 10 series 国创 đứng đầu bảng xếp hạng sống của Bilibili (`kind = series`, ví dụ 灵笼 第二季). Đo ngày 31/10/2026: bảng xếp hạng *video* theo từng danh mục (`ranking/v2` với `rid` khác 0) đã đứng im từ tháng 3/2025, mọi mục cũ hơn 576 ngày, nên không dùng; chỉ bảng series còn sống. Bảng phẳng, có tiêu đề, link, kênh, lượt xem, thời lượng, cờ ngách. estfstudio đọc bảng này cho `/analysis`; nó không phụ thuộc `ideas` vì các lần chạy theo giờ thường không có ý tưởng mới (video đã đề xuất trong 90 ngày thì bị loại).
 
-**Tám biểu đồ** (ảnh PNG vuông 1080×1080 lên image host, `media.kind = 'analysis'`, có `caption` và `position`; mỗi ảnh ghi giờ chạy trong hình nên không bao giờ trùng `sha256` với lần khác):
+**Một ảnh "Bảng phân tích"** (PNG lên image host, `media.kind = 'analysis'`, `position = 1`, có `caption`; `runs.chart_media_id` trỏ tới nó; ảnh ghi giờ chạy trong hình nên không bao giờ trùng `sha256` với lần khác). Mọi biểu đồ của lần chạy là các ô của cùng một ảnh: ô rộng chiếm cả hàng, ô hẹp đi thành cặp, ô hẹp lẻ thì chiếm cả hàng. Ảnh dựng trên khung rộng 1080 và cao theo số ô, rồi xuất to lên tới 2560 px ở cạnh dài (mức Telegram giữ nguyên), tối đa gấp đôi, để phóng to trên điện thoại vẫn nét; một ảnh như vậy khoảng 300–400 KB, dưới giới hạn 2 MB của image host. Ô nào dữ liệu không đủ thì bỏ, không vẽ khung trống; không ô nào cả thì không có ảnh.
 
-| Vị trí | Biểu đồ | Đọc để biết |
+| Biểu đồ | Ô | Đọc để biết |
 | --- | --- | --- |
-| 1 | Video đang hot | Thẻ xếp hạng 8 video ưu tiên cao nhất, huy hiệu nền tảng và ngách |
-| 2 | Tăng trưởng lượt xem của video hot | Một biểu đồ đường, chung một thang và một trục thời gian: mỗi video trong danh sách hot (tối đa 10) đã được đo từ trước (đọc từ `snapshots`) là một đường lượt xem tăng thêm kể từ lần bot đo đầu tiên; số ở cuối đường là thứ tự của nó trong tin nhắn. Màu so tốc độ gần đây với tốc độ trung bình từ lúc đăng: xanh ngọc ▲ nhanh hơn (từ 1,1 lần), xanh dương ● giữ nhịp, cam ▼ chậm lại (từ 0,9 lần trở xuống). Video mới gặp lần đầu chưa có đường (Bilibili không công bố lịch sử lượt xem) và được kể tên trong `caption`; khi chưa video nào được đo thì bỏ biểu đồ này |
-| 3 | Lượt xem và mức vượt kênh | Mỗi chấm là một video: lượt xem và z-score trong nền tảng của nó; vạch đứt là ngưỡng θ thật, vòng vàng là video hot |
-| 4 | Tỉ trọng nền tảng | Bilibili và YouTube chiếm bao nhiêu video và lượt xem |
-| 5 | Thời lượng video | Số video theo nhóm thời lượng; từ 4 giờ trở lên là tuyển tập |
-| 6 | Giờ đăng | Khung giờ đăng nhiều video (giờ Việt Nam) |
-| 7 | Từ khoá hiệu quả nhất | Từ khoá cho lượt xem trung vị cao |
-| 8 | Các lần chạy gần đây | Hai khung chung trục thời gian: số video thu được và số video hot của từng lần chạy |
+| Tăng trưởng lượt xem của video hot | rộng | Một biểu đồ đường, chung một thang và một trục thời gian: mỗi video trong danh sách hot (tối đa 10) đã được đo từ trước (đọc từ `snapshots`) là một đường lượt xem tăng thêm kể từ lần bot đo đầu tiên; số ở cuối đường là thứ tự của nó trong tin nhắn. Màu so tốc độ gần đây với tốc độ trung bình từ lúc đăng: xanh ngọc ▲ nhanh hơn (từ 1,1 lần), xanh dương ● giữ nhịp, cam ▼ chậm lại (từ 0,9 lần trở xuống). Video mới gặp lần đầu chưa có đường (Bilibili không công bố lịch sử lượt xem) và được kể tên trong `caption`; khi chưa video nào được đo thì bỏ ô này |
+| Lượt xem và mức vượt kênh | hẹp | Mỗi chấm là một video: lượt xem và z-score trong nền tảng của nó; vạch đứt là ngưỡng θ thật, vòng vàng là video hot |
+| Thời lượng video | hẹp | Số video theo nhóm thời lượng; từ 4 giờ trở lên là tuyển tập |
+| Giờ đăng | rộng | Khung giờ đăng nhiều video (giờ Việt Nam), mỗi hàng một nền tảng |
+| Từ khoá hiệu quả nhất | rộng | Từ khoá cho lượt xem trung vị cao |
+| Tỉ trọng nền tảng | hẹp | Bilibili và YouTube chiếm bao nhiêu video và lượt xem (chỉ khi có cả hai) |
+| Các lần chạy gần đây | hẹp | Hai khung chung trục thời gian: số video thu được và số video hot của từng lần chạy |
 
-Mỗi biểu đồ tự giải thích cho người không quen thống kê: dòng phụ đề trong ảnh nói một điểm, một cột hay một đường nghĩa là gì; `caption` (hiện dưới ảnh trong Telegram) có tên biểu đồ, cách đọc và điều lần chạy này cho thấy, ví dụ video tăng nhanh nhất và bao nhiêu lượt mỗi giờ. Số được viết kiểu Việt (1,2 triệu, 45 nghìn).
+Mỗi ô tự giải thích cho người không quen thống kê: dưới tên ô có một dòng nói một điểm, một cột hay một đường nghĩa là gì. `caption` (hiện dưới ảnh trong Telegram, tối đa 1000 ký tự) có một dòng cho mỗi ô — tên ô và điều lần chạy này cho thấy, ví dụ video tăng nhanh nhất và bao nhiêu lượt mỗi ngày — và cuối cùng là link tới trang này; dòng dài nhất bị cắt trước khi caption vượt giới hạn. Số được viết kiểu Việt (1,2 triệu, 45 nghìn).
+
+Từ 03/11/2026 `/analysis` nhận một ảnh thay cho một album 5–8 ảnh: các biểu đồ gộp thành các ô của "Bảng phân tích", và thẻ xếp hạng "Video đang hot" (lần tìm: "Video nổi bật") đã bỏ, vì nó lặp lại danh sách hot mà estfstudio gửi ngay sau ảnh; tên của các video chỉ có trên thẻ cũng không còn phải dịch.
 
 Biểu đồ phân bố z-score đã bỏ (31/10/2026): người đọc không rút ra được việc cần làm, và vạch "ngưỡng" của nó thật ra là z thấp nhất trong nhóm đã vượt, không phải θ. Không biểu đồ nào dùng hai trục dọc: hai đại lượng khác thang được vẽ thành hai khung. Biểu đồ tăng trưởng gộp cả danh sách hot vào một khung (03/11/2026) thay cho mười ô nhỏ mỗi ô một thang, để so được video này với video kia; mười màu thì không ai phân biệt nổi, nên màu chỉ mang ba trạng thái nhanh hơn / giữ nhịp / chậm lại (kèm ký hiệu ▲ ● ▼, không dựa riêng vào màu), còn video nào là đường nào thì đọc ở số cuối đường và danh sách tên dưới biểu đồ.
 
@@ -204,7 +205,7 @@ Mỗi job tạo đúng một hàng. Xoá một run thì `candidates` và `ideas`
 | `request_id` | text | có | Mã yêu cầu của người gọi (estfstudio `/analysis`) | `tg6224920853x1761901502` |
 | `duration_ms` | int | có | Thời gian chạy; mục tiêu dưới 3 phút | `99000` |
 | `chart_path` | text | có | Đường dẫn PNG artifact trên Actions (debug) | `output/2026-10-28_visual_summary.png` |
-| `chart_media_id` | text FK → `media.id`, **đề xuất** | có | Biểu đồ đã upload lên image host | `img_4be1c07d9a2f5e31` |
+| `chart_media_id` | text FK → `media.id`, **đề xuất** | có | Ảnh "Bảng phân tích" đã upload lên image host | `img_4be1c07d9a2f5e31` |
 
 | Hàng mẫu | trigger | status | collected / outliers / ideas | error |
 | --- | --- | --- | --- | --- |

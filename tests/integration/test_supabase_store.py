@@ -10,7 +10,7 @@ from datetime import timedelta
 
 from application.digest import RunDigest
 from domain.models import HotVideo, Media, PreviousSnapshot, RunRequest
-from tests.fakes import NOW, FakeChart, FakeEmbedder, FakeImageHost, FakeSource, FakeWriter
+from tests.fakes import NOW, FakeAnalysis, FakeEmbedder, FakeImageHost, FakeSource, FakeWriter
 
 
 class PaddedEmbedder(FakeEmbedder):
@@ -43,7 +43,7 @@ class SupabaseStoreIntegrationTest(unittest.TestCase):
         return RunDigest(
             self.store, FakeSource(videos=[dataclasses.replace(v, captured_at=now) for v in
                                            FakeSource().videos]),
-            PaddedEmbedder(), FakeWriter(), image_host=FakeImageHost(), chart=FakeChart(),
+            PaddedEmbedder(), FakeWriter(), image_host=FakeImageHost(), analysis=FakeAnalysis(),
             clock=lambda: now, **kw,
         ).run(request)
 
@@ -72,8 +72,8 @@ class SupabaseStoreIntegrationTest(unittest.TestCase):
         self.assertAlmostEqual(run["z_threshold_used"], 0.5)
         self.assertTrue(run["started_at"].endswith("+07:00"), run["started_at"])  # DB shows Vietnam time
         self.assertTrue(run["chart_media_id"].startswith("img_"))
-        card = db.table("media").select("kind,caption,position").eq("id", run["chart_media_id"]).execute().data[0]
-        self.assertEqual(card, {"kind": "analysis", "caption": "Video đang hot", "position": 1})
+        image = db.table("media").select("kind,caption,position").eq("id", run["chart_media_id"]).execute().data[0]
+        self.assertEqual(image, {"kind": "analysis", "caption": "Bảng phân tích", "position": 1})
         ideas = db.table("ideas").select("video_id,llm,status,duplicates_count").eq("run_id", r.run_id).execute().data
         self.assertEqual(sorted(i["video_id"] for i in ideas), ["yt_vid001", "yt_vid004"])
         self.assertTrue(all(i["llm"]["angles"] and i["status"] == "new" for i in ideas))

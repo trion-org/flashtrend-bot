@@ -51,15 +51,9 @@ def result_to_dict(result: RunResult) -> dict:
     }
 
 
-def write_output(directory: str | Path, result: RunResult, chart_png: bytes | None) -> list[Path]:
+def write_output(directory: str | Path, result: RunResult) -> list[Path]:
     out = Path(directory)
     out.mkdir(parents=True, exist_ok=True)
-    written = []
     path = out / f"{result.run_id}_digest.json"
     path.write_text(json.dumps(result_to_dict(result), ensure_ascii=False, indent=2), encoding="utf-8")
-    written.append(path)
-    if chart_png:
-        png = out / f"{result.run_id}_visual_summary.png"
-        png.write_bytes(chart_png)
-        written.append(png)
-    return written
+    return [path]

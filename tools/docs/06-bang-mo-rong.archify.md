@@ -178,7 +178,7 @@ alter table app_config add constraint app_config_search_window_hours_check
 | `app_config.niche_exclude_terms` | Tiêu đề có từ này thì không thuộc ngách (khoá học, thuyết minh) |
 | `app_config.analysis_every_hours` | Vẽ và upload biểu đồ chỉ khi giờ chia hết N: giữ tải của image host |
 
-**Tên video tiếng Việt.** Mỗi lần chạy dịch sang tiếng Việt tên các video người đọc sẽ gặp: danh sách hot, series, thẻ "Video đang hot" và các video hot trên biểu đồ. Gemini dịch một lần cho mỗi tên (tên tác phẩm, nhân vật theo Hán-Việt, ví dụ 凡人修仙传 → Phàm Nhân Tu Tiên), bản dịch lưu trong `titles_vi` theo sha256 của tên gốc nên lần sau không hỏi lại. `hot_videos.title_vi` mang bản dịch để estfstudio hiện mà không cần join; biểu đồ vẽ tên tiếng Việt. Dịch lỗi thì vẫn hiện tên gốc, không làm hỏng run; `--dry-run` không dịch.
+**Tên video tiếng Việt.** Mỗi lần chạy dịch sang tiếng Việt tên các video người đọc sẽ gặp: danh sách hot, series và các video hot trên biểu đồ. Gemini dịch một lần cho mỗi tên (tên tác phẩm, nhân vật theo Hán-Việt, ví dụ 凡人修仙传 → Phàm Nhân Tu Tiên), bản dịch lưu trong `titles_vi` theo sha256 của tên gốc nên lần sau không hỏi lại. `hot_videos.title_vi` mang bản dịch để estfstudio hiện mà không cần join; biểu đồ vẽ tên tiếng Việt. Dịch lỗi thì vẫn hiện tên gốc, không làm hỏng run; `--dry-run` không dịch.
 
 ```sql title="Migration 08 — tên video tiếng Việt"
 create table if not exists titles_vi (
@@ -201,7 +201,7 @@ Lịch chạy mỗi giờ luôn là `digest`: tìm bằng bộ từ khoá ngách
 | `trending` | Bảng hot của chính Bilibili: 综合热门 và 全站排行榜 (top 100), mọi chủ đề. Chỉ khoảng 3/100 video ở đây dài từ 1 giờ, nên với `min_minutes` 综合热门 được đọc từng trang 50 video (tối đa 20 trang) tới khi đủ 40 video đủ dài | `/analysis` không kèm từ khoá |
 | `search` | Từ khoá người dùng gõ (tiếng Việt cũng được), Gemini đổi thành từ khoá tìm tiếng Trung (phim hoạt hình Tây Du Ký → 西游记 动画), rồi tìm trên Bilibili: 40 video nhiều lượt xem nhất trong `search_window_hours`. Từ 1 giờ trở lên thì chính lệnh tìm hỏi Bilibili video trên 60 phút (`duration=4`) | `/analysis <từ khoá>` |
 
-Phần chấm điểm (z-score so với kênh, viral score), danh sách hot, tên tiếng Việt và biểu đồ giữ nguyên; chân mỗi ảnh ghi run đã tìm gì (ví dụ «Tìm «phim hoạt hình Tây Du Ký» → 西游记 动画 trên Bilibili · video từ 1 giờ»), thẻ đầu đổi tiêu đề thành "Video nổi bật". Biểu đồ không có ý nghĩa với một lần tìm thì không vẽ: tỉ trọng nền tảng (chỉ có Bilibili), từ khoá hiệu quả (chỉ một từ khoá) và các lần chạy gần đây (lịch sử của lần chạy mỗi giờ). Lịch sử đó cũng chỉ đếm các run `digest`. Dịch từ khoá lỗi thì tìm đúng chữ đã gõ, không làm hỏng run.
+Phần chấm điểm (z-score so với kênh, viral score), danh sách hot, tên tiếng Việt và biểu đồ giữ nguyên; chân mỗi ảnh ghi run đã tìm gì (ví dụ «Tìm «phim hoạt hình Tây Du Ký» → 西游记 动画 trên Bilibili · video từ 1 giờ»). Ô biểu đồ không có ý nghĩa với một lần tìm thì không vẽ: tỉ trọng nền tảng (chỉ có Bilibili), từ khoá hiệu quả (chỉ một từ khoá) và các lần chạy gần đây (lịch sử của lần chạy mỗi giờ). Lịch sử đó cũng chỉ đếm các run `digest`. Dịch từ khoá lỗi thì tìm đúng chữ đã gõ, không làm hỏng run.
 
 Mỗi run một lần có `id` thêm đuôi chế độ (`run_20261031T160502_search`) vì nó chạy song song với run mỗi giờ: workflow đặt `concurrency` theo mã yêu cầu, nên các lần tìm không phải xếp hàng sau nhau, cũng không huỷ nhau. Run lưu chế độ, từ khoá, từ khoá tiếng Trung và mã yêu cầu của người gọi; tên run trên GitHub Actions cũng mang mã đó để estfstudio nhận ra run của mình.
 

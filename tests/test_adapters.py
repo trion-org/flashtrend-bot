@@ -13,7 +13,6 @@ from domain.errors import FlashTrendError
 from domain.models import Media
 from infrastructure import gemini, image_host
 from infrastructure import settings as cfg
-from infrastructure.chart import MatplotlibChart
 from infrastructure.dry_run import DryRunStore
 from infrastructure.youtube_api import YouTubeSource, map_http_error, parse_duration
 from tests.fakes import NOW, FakeStore, good_llm, sample_videos
@@ -448,21 +447,9 @@ class ChartTest(unittest.TestCase):
         self.assertEqual(clean_label("Cách tạo Bot Python"), "Cách tạo Bot Python")
 
 
-    def test_renders_a_small_png(self):
-        from application.digest import RunDigest
-        from tests.fakes import FakeEmbedder, FakeSource, FakeWriter
-
-        store = FakeStore()
-        result = RunDigest(store, FakeSource(), FakeEmbedder(), FakeWriter(), clock=lambda: NOW).run()
-        image = MatplotlibChart().render(result.run_id, result.ideas)
-        self.assertTrue(image.png.startswith(b"\x89PNG"))
-        self.assertLess(len(image.png), 2_000_000)
-        self.assertEqual((image.width, image.height), (1080, 1080))
-        self.assertIsNone(MatplotlibChart().render("r", []))
-
 
 class AnalysisChartsRenderTest(unittest.TestCase):
-    """The real charts, drawn from one fake run: what goes out and what each caption tells the reader."""
+    """The real charts, drawn from one fake run as one image: what goes out and what its caption tells."""
 
     @staticmethod
     def run_and_render(prev_hours=(3, 2, 1), listed=True):
@@ -479,42 +466,79 @@ class AnalysisChartsRenderTest(unittest.TestCase):
         return hot, AnalysisCharts().render(result.run_id, NOW, store.candidates, result.ideas, [], growth,
                                             hot if listed else None, "Video hot toàn Bilibili · video từ 1 giờ")
 
-    def test_the_growth_chart_draws_the_hot_list_one_line_each_on_one_scale(self):
+    @staticmethod
+    def line(image, title: str) -> str:
+        """The caption's line of one panel."""
+        return next(row for row in image.caption.split("\n") if row.startswith(f"• {title}"))
+
+    def test_the_analysis_is_one_tall_image_with_a_panel_per_chart(self):
         hot, images = self.run_and_render()
         self.assertTrue(hot)
-        slugs = [(img.position, img.slug) for img in images]
-        self.assertIn((2, "growth"), slugs)
-        self.assertNotIn("zscore", [s for _, s in slugs])
-        self.assertTrue(all(img.png.startswith(b"\x89PNG") for img in images))
-        growth = next(img for img in images if img.slug == "growth")
-        self.assertTrue(growth.caption.startswith("Tăng trưởng lượt xem của video hot\n"))
-        self.assertIn("Bilibili không công bố lịch sử lượt xem", growth.caption)  # why a line starts late
-        self.assertIn("chung một thang", growth.caption)
-        self.assertIn("số ở cuối đường là thứ tự", growth.caption)  # ten lines, told apart by their number
-        self.assertIn(f"{len(hot)}/{len(hot)} video đã được bot đo", growth.caption)
-        self.assertIn("đang tăng nhanh nhất", growth.caption)  # the fastest one, in plain words
-        self.assertIn("lần trung bình từ lúc đăng", growth.caption)
-        self.assertNotIn("mới gặp lần đầu nên", growth.caption)
+        self.assertEqual(len(images), 1)  # one picture in the chat, not an album of seven
+        image = images[0]
+        self.assertEqual((image.slug, image.position), ("dashboard", 1))  # the run's only picture
+        self.assertTrue(image.png.startswith(b"\x89PNG"))
+        self.assertGreater(image.height, image.width)  # as tall as its panels …
+        self.assertIn(image.height, (2559, 2560))  # … rendered as large as a Telegram photo keeps
+        self.assertGreater(image.width, 1080)
+        self.assertLess(len(image.png), 2_000_000)  # the image host's limit
+        rows = image.caption.split("\n")
+        self.assertEqual(rows[0], "Bảng phân tích — lượt này cho thấy:")
+        self.assertTrue(rows[-1].startswith("Cách đọc từng ô: https://"))  # every panel explained at length
+        self.assertIn("• Tăng trưởng lượt xem của", image.caption)
+        self.assertNotIn("zscore", image.caption)
+
+    def test_the_growth_panel_draws_the_hot_list_one_line_each_on_one_scale(self):
+        hot, images = self.run_and_render()
+        growth = self.line(images[0], "Tăng trưởng lượt xem")
+        self.assertIn(f"{len(hot)}/{len(hot)} video đã được bot đo", growth)
+        self.assertIn("tăng nhanh nhất", growth)  # the fastest one, in plain words
+        self.assertIn("lần trung bình từ lúc đăng", growth)
+        self.assertNotIn("mới gặp lần đầu", growth)
 
     def test_a_video_met_for_the_first_time_has_no_line_and_the_caption_names_it(self):
         from domain.models import PreviousSnapshot
         from infrastructure.analysis_charts import AnalysisCharts
 
         hot, _ = self.run_and_render()
-        first = hot[0]
         growth = {c.video.id: [PreviousSnapshot(c.video.views - 900 * h, NOW - timedelta(hours=h)) for h in (3, 2)]
                   for c in hot[1:]}
-        image = next(img for img in AnalysisCharts().render("r", NOW, hot, [], [], growth, hot)
-                     if img.slug == "growth")
-        self.assertIn(f"{len(hot) - 1}/{len(hot)} video đã được bot đo", image.caption)
-        self.assertIn("số 1 mới gặp lần đầu nên chưa có đường", image.caption)
-        self.assertTrue(first.video.views > 0)
+        image = AnalysisCharts().render("r", NOW, hot, [], [], growth, hot)[0]
+        line = self.line(image, "Tăng trưởng lượt xem")
+        self.assertIn(f"{len(hot) - 1}/{len(hot)} video đã được bot đo", line)
+        self.assertIn("số 1 mới gặp lần đầu", line)
 
-    def test_without_an_earlier_snapshot_the_growth_chart_is_left_out(self):
+    def test_without_an_earlier_snapshot_the_growth_panel_is_left_out(self):
         _, images = self.run_and_render(prev_hours=())
-        self.assertNotIn("growth", [img.slug for img in images])  # nothing measured: no line to draw
-        _, images = self.run_and_render(listed=False)
-        self.assertNotIn("growth", [img.slug for img in images])  # no hot list, no panels
+        self.assertNotIn("• Tăng trưởng lượt xem", images[0].caption)  # nothing measured: no line to draw
+        self.assertIn("• Lượt xem và mức vượt kênh", images[0].caption)  # the other panels stay
+
+    def test_with_no_data_there_is_no_image(self):
+        from infrastructure.analysis_charts import AnalysisCharts
+
+        self.assertEqual(AnalysisCharts().render("r", NOW, [], [], []), [])
+
+    def test_panels_go_two_to_a_row_and_a_wide_one_alone(self):
+        from infrastructure.analysis_charts import _Panel, _rows
+
+        def panel(name, wide=False):
+            return _Panel(name, "", 100, lambda *_: "", wide=wide)
+
+        growth, scatter, duration, hours, timeline = (panel("g", True), panel("s"), panel("d"), panel("h", True),
+                                                      panel("t"))
+        rows = _rows([growth, scatter, duration, hours, timeline])
+        self.assertEqual([[p.title for p in row] for row in rows], [["g"], ["s", "d"], ["h"], ["t"]])
+        rows = _rows([scatter, hours, duration])  # a narrow one before a wide one keeps the row to itself
+        self.assertEqual([[p.title for p in row] for row in rows], [["s"], ["h"], ["d"]])
+
+    def test_a_long_caption_cuts_its_longest_line_and_keeps_every_panel_and_the_link(self):
+        from infrastructure.analysis_charts import DOCS_URL, _caption
+
+        caption = _caption([("Tăng trưởng", "x" * 900), ("Thời lượng video", "4/25 video dài từ 4 giờ")])
+        self.assertLessEqual(len(caption), 1000)  # a Telegram photo caption
+        self.assertIn("• Thời lượng video: 4/25 video dài từ 4 giờ", caption)  # the short line is untouched
+        self.assertIn("• Tăng trưởng: xxx", caption)
+        self.assertTrue(caption.endswith(DOCS_URL))
 
     def test_the_footer_names_what_a_one_off_look_looked_at(self):
         from infrastructure.chart import NICHE_SCOPE, frame
@@ -524,16 +548,16 @@ class AnalysisChartsRenderTest(unittest.TestCase):
         fig, _ = frame("t", "s", "r", NOW)
         self.assertIn(NICHE_SCOPE, [t.get_text() for t in fig.texts])
 
-    def test_every_caption_says_how_to_read_the_chart_and_what_this_run_shows(self):
+    def test_every_panel_line_says_what_this_run_shows(self):
         hot, images = self.run_and_render()
-        for img in images:
-            title, how, now = img.caption.split("\n")
-            self.assertTrue(title and len(how) > 80, img.slug)
-            self.assertTrue(now.startswith(("Lượt này", "Lần này", "Nhanh nhất")), img.slug)
-            self.assertLessEqual(len(img.caption), 1000)  # a Telegram photo caption
-        scatter = next(img for img in images if img.slug == "scatter")
+        rows = images[0].caption.split("\n")[1:-1]
+        self.assertGreaterEqual(len(rows), 4)  # growth, scatter, duration, hours
+        for row in rows:
+            title, _, fact = row.partition(": ")
+            self.assertTrue(title.startswith("• ") and len(fact) > 20, row)
+        self.assertLessEqual(len(images[0].caption), 1000)  # a Telegram photo caption
         theta = f"{hot[0].z_threshold:g}".replace(".", ",")  # 5 videos: the relaxed θ
-        self.assertIn(f"ngưỡng hot ({theta})", scatter.caption)  # the real θ, not the lowest z that passed
+        self.assertIn(f"vượt ngưỡng hot {theta}", self.line(images[0], "Lượt xem và mức vượt kênh"))  # the real θ
 
 
 if __name__ == "__main__":
