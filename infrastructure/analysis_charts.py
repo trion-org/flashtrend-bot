@@ -15,6 +15,7 @@ import statistics
 from collections import defaultdict
 from datetime import datetime
 
+from matplotlib.lines import Line2D
 from matplotlib.ticker import FuncFormatter
 
 from application.ports import AnalysisImage, RunPoint
@@ -26,6 +27,7 @@ from infrastructure.chart import (
     GOLD,
     GRID,
     HEIGHT_PX,
+    MAGENTA,
     MUTED,
     PANEL,
     PLATFORM_COLOR,
@@ -43,11 +45,13 @@ from infrastructure.chart import (
 )
 
 MIN_POINTS = 5  # fewer candidates than this make a distribution chart meaningless
-#: the growth chart: one small panel per hot-list video (its 10 rows), in rows of 5, one hue for all — each
-#: panel is a single series, so a categorical palette would only add a legend to decode
-GROWTH_VIDEOS, GROWTH_COLUMNS = 10, 5
-LINE_COLOR = "#7aa2ff"  # Archify dark accent-blue, for the growth lines
-MARKERS_UP_TO = 12  # measured points drawn as dots up to this many; an hourly run's three days stay a line
+#: the growth chart: one line per hot-list video (its 10 rows) on one shared scale. Ten hues cannot be told
+#: apart, so a line's colour says only how its recent pace compares with its average since upload — the number
+#: at the end of the line says which video it is
+GROWTH_VIDEOS = 10
+FASTER, SLOWER = 1.1, 0.9  # recent pace this many times the average since upload: speeding up / slowing down
+LINE_COLOR = "#7aa2ff"  # Archify dark accent-blue: a line that keeps its pace
+GROWTH_NAMES_PER_ROW = 5  # the hot list's titles under the chart, in rows of this many
 
 DURATION_BUCKETS = (  # (label, upper bound in seconds)
     ("< 1 giờ", 3600), ("1–4 giờ", 14400), ("4–8 giờ", 28800), ("8–24 giờ", 86400), ("> 24 giờ", None),
@@ -104,6 +108,11 @@ def _span(days: float) -> str:
     return f"{days:.0f} ngày" if days >= 2 else f"{days * 24:.0f} giờ"
 
 
+def _pace_color(times: float) -> str:
+    """A growth line's colour: its recent pace against its average since upload."""
+    return TEAL if times >= FASTER else MAGENTA if times <= SLOWER else LINE_COLOR
+
+
 def _style(ax, grid: str = "y") -> None:
     ax.set_facecolor(PANEL)
     ax.grid(axis=grid, color=GRID, linewidth=0.8)
@@ -149,88 +158,85 @@ class AnalysisCharts:
     # ------------------------------------------------------------------ charts
 
     def _growth(self, run_id, now, scope, listed, growth):
-        """Small multiples, one per hot-list video. Bilibili keeps no view history, so a video the bot
-        measured before shows only the measured stretch: the views gained (solid) against its average pace
-        since upload over the same time (dashed). A video met for the first time has only that dashed pace,
-        from 0 at upload to now."""
-        import matplotlib.dates as mdates
-        from matplotlib.ticker import MaxNLocator
-
+        """One line per hot-list video the bot measured before, on one scale and one time axis: the views
+        it gained since the first time the bot measured it. Bilibili keeps no view history, so a line starts
+        at the bot's first measure; a video met for the first time has no line yet. The colour compares the
+        measured pace with the video's average pace since upload; the number at a line's end is its rank."""
         shown = [(rank, c) for rank, c in enumerate(listed[:GROWTH_VIDEOS], start=1) if c.video.views > 0]
-        if not shown:
-            return None
-        cols = min(GROWTH_COLUMNS, len(shown))
-        rows = -(-len(shown) // cols)
-        fig, ax = frame(f"Tăng trưởng lượt xem của {len(shown)} video hot",
-                        "Nét liền = lượt xem tăng thêm qua các lần bot đo · nét đứt = tốc độ trung bình "
-                        "từ lúc đăng · mỗi ô một thang riêng", run_id, now, scope)
-        ax.remove()
-        grid = fig.add_gridspec(rows, cols, left=0.055, right=0.985, bottom=0.1, top=0.69,
-                                hspace=0.95 if rows > 1 else 0.5, wspace=0.42)
-        paces = []  # (views per day, measured lately?, rank, candidate, times faster than its average)
-        for i, (rank, c) in enumerate(shown):
-            ax = fig.add_subplot(grid[i // cols, i % cols])
-            _style(ax)
+        lines = []  # (rank, candidate, times, gains, views per day lately, times faster than its average)
+        new = []  # ranks met for the first time
+        for rank, c in shown:
             seen = {p.captured_at: p.views for p in growth.get(c.video.id, [])
                     if p.captured_at >= c.video.published_at}
             seen[c.video.captured_at] = c.video.views
             points = sorted(seen.items())
+            span = (points[-1][0] - points[0][0]).total_seconds() / 86400
+            if len(points) < 2 or span * 24 < 1:
+                new.append(rank)
+                continue
             last_t, last_v = points[-1]
             avg = last_v / max((last_t - c.video.published_at).total_seconds() / 86400, 1 / 24)
-            span = (last_t - points[0][0]).total_seconds() / 86400
-            if len(points) >= 2 and span * 24 >= 1:  # measured: the gains, against the average pace
-                xs = [to_vn(t) for t, _ in points]
-                ys = [v - points[0][1] for _, v in points]
-                recent = ys[-1] / span
-                ax.plot([xs[0], xs[-1]], [0, avg * span], color=LINE_COLOR, linewidth=1.6,
-                        linestyle=(0, (3, 3)))
-                dots = len(xs) <= MARKERS_UP_TO
-                ax.plot(xs, ys, color=LINE_COLOR, linewidth=2, marker="o" if dots else None, markersize=6,
-                        markeredgecolor=PANEL, markeredgewidth=1.5)
-                top = max(max(ys), avg * span)
-                info = f"+{compact(ys[-1])} trong {_span(span)} · {compact(recent)}/ngày"
-                paces.append((recent, True, rank, c, recent / avg if avg else 0))
-                fmt = "%H:%M" if xs[0].date() == xs[-1].date() else "%d/%m"
-            else:  # met for the first time: only the straight pace from upload
-                xs, ys = [to_vn(c.video.published_at), to_vn(last_t)], [0, last_v]
-                ax.plot(xs, ys, color=LINE_COLOR, linewidth=1.6, linestyle=(0, (3, 3)))
-                top = last_v
-                info = f"{compact(last_v)} lượt · TB {compact(avg)}/ngày"
-                paces.append((avg, False, rank, c, 1.0))
-                fmt = "%H:%M" if xs[0].date() == xs[-1].date() else "%d/%m"
-            ax.plot(xs[-1:], ys[-1:], color=LINE_COLOR, marker="o", markersize=6, markeredgecolor=PANEL,
-                    markeredgewidth=1.5)
-            ax.set_ylim(0, top * 1.15 or 1)
-            ax.set_xlim(xs[0], xs[-1] + (xs[-1] - xs[0]) * 0.06)
-            ax.set_xticks([xs[0], xs[-1]])
-            ax.xaxis.set_major_formatter(mdates.DateFormatter(fmt, tz=xs[0].tzinfo))
-            ax.yaxis.set_major_locator(MaxNLocator(3))
-            ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: compact(x)))
-            ax.tick_params(labelsize=8)
-            title = shorten(clean_label(c.shown_title) or c.video.native_id, 24)
-            ax.set_title(f"{rank}. {title}", loc="left", color=TEXT, fontsize=9.5, fontweight="bold", pad=24)
-            ax.annotate(info, (0, 1), xytext=(0, 5), textcoords="offset points", xycoords="axes fraction",
-                        color=MUTED, fontsize=8.5, va="bottom")  # fixed gap, whatever the panel's height
-        measured = [p for p in paces if p[1]]
+            recent = (last_v - points[0][1]) / span
+            xs, ys = [to_vn(t) for t, _ in points], [v - points[0][1] for _, v in points]
+            lines.append((rank, c, xs, ys, recent, recent / avg if avg else 1.0))
+        if not lines:
+            return None
+        fig, ax = frame(f"Tăng trưởng lượt xem của {len(lines)} video hot",
+                        "Lượt xem tăng thêm kể từ lần bot đo đầu tiên · chung một thang · "
+                        "màu = nhanh hay chậm hơn trung bình từ lúc đăng", run_id, now, scope)
+        _style(ax)
+        ax.set_position([0.09, 0.17, 0.83, 0.58])
+        ends = []  # [gained, label height, rank, time] per line
+        for rank, _, xs, ys, _, times in lines:
+            color = _pace_color(times)
+            ax.plot(xs, ys, color=color, linewidth=2, solid_capstyle="round", zorder=2)
+            ax.plot(xs[-1:], ys[-1:], marker="o", markersize=8, color=color, markeredgecolor=PANEL,
+                    markeredgewidth=2, zorder=3)
+            ends.append([ys[-1], ys[-1], rank, xs[-1]])
+        low = min(0, *(min(line[3]) for line in lines))  # a recount can take a few views back
+        top = max(e[0] for e in ends)
+        ends.sort()
+        for below, end in zip(ends, ends[1:], strict=False):  # labels 5 % of the scale apart, none on another
+            end[1] = max(end[1], below[1] + (top - low) * 0.05)
+        high = max(top, ends[-1][1])
+        ceiling = high + (high - low) * 0.06 or 1
+        ax.set_ylim(low, ceiling)
+        for gained, height, rank, x in ends:  # right of the plot, a hairline back to the line's last point
+            ax.annotate(str(rank), (x, gained), xytext=(1.035, (height - low) / (ceiling - low)),
+                        textcoords="axes fraction", color=TEXT, fontsize=11, fontweight="bold", va="center",
+                        ha="center", annotation_clip=False,
+                        arrowprops={"arrowstyle": "-", "color": MUTED, "linewidth": 0.8, "shrinkA": 4,
+                                    "shrinkB": 5})
+        times_all = [x for _, _, xs, _, _, _ in lines for x in xs]
+        first, last = min(times_all), max(times_all)
+        ax.set_xlim(first, last + (last - first) * 0.012)
+        _time_axis(ax, times_all)
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: compact(x)))
+        ax.set_ylabel("Lượt xem tăng thêm")
+        ax.legend(handles=[Line2D([], [], color=color, linewidth=2.5, label=label)
+                           for color, label in ((TEAL, "▲ nhanh hơn trung bình"), (LINE_COLOR, "● giữ nhịp"),
+                                                (MAGENTA, "▼ chậm lại"))],
+                  loc="upper left", frameon=False, labelcolor=TEXT, fontsize=10)
+        names = [f"{rank}. {shorten(clean_label(c.shown_title) or c.video.native_id, 22)}"
+                 for rank, c, *_ in lines]
+        for row in range(0, len(names), GROWTH_NAMES_PER_ROW):
+            fig.text(0.04, 0.085 - 0.023 * (row // GROWTH_NAMES_PER_ROW), "   ".join(
+                names[row:row + GROWTH_NAMES_PER_ROW]), color=MUTED, fontsize=8.5, va="center")
         note = " ".join((
-            "Mỗi ô là một video trong danh sách hot, đúng thứ tự trong tin nhắn; mỗi ô có thang riêng.",
-            "Bilibili không công bố lịch sử lượt xem, nên bot chỉ biết những lần chính nó đo.",
-            "Video đã được đo nhiều lần (lần chạy mỗi giờ, hoặc lần tìm trước):",
-            "nét liền là lượt xem tăng thêm qua các lần đo,",
-            "nét đứt là tốc độ trung bình từ lúc đăng kéo qua cùng khoảng thời gian —",
-            "nét liền dốc hơn nét đứt là video đang tăng nhanh hơn trước, thoải hơn là đã chững lại.",
-            "Video mới gặp lần đầu chỉ có nét đứt: đường thẳng từ 0 lúc đăng tới lượt xem bây giờ.",
+            "Mỗi đường là một video trong danh sách hot; số ở cuối đường là thứ tự của nó trong tin nhắn.",
+            "Mọi đường chung một thang: đường càng cao là video càng được xem thêm nhiều",
+            "kể từ lần đầu bot đo nó, càng dốc là đang tăng càng nhanh.",
+            "Bilibili không công bố lịch sử lượt xem, nên bot chỉ biết những lần chính nó đo —",
+            "mỗi đường bắt đầu từ lần đo đầu tiên, và video mới gặp lần đầu chưa có đường.",
+            "Màu so tốc độ gần đây với tốc độ trung bình từ lúc đăng:",
+            f"xanh ngọc ▲ là nhanh hơn (từ {_decimal(FASTER)} lần trở lên), xanh dương ● là giữ nhịp,",
+            f"cam ▼ là đã chậm lại (từ {_decimal(SLOWER)} lần trở xuống).",
         ))
-        if measured:
-            pace, _, rank, c, times = max(measured, key=lambda p: p[0])
-            note += (f"\nLượt này: số {rank}, {shorten(clean_label(c.shown_title), 40)} đang tăng nhanh "
-                     f"nhất — khoảng {_num(pace)} lượt xem mỗi ngày gần đây ({_decimal(round(times, 1))} lần "
-                     f"trung bình từ lúc đăng). {len(measured)}/{len(shown)} video đã được bot đo từ trước.")
-        else:
-            pace, _, rank, c, _ = max(paces, key=lambda p: p[0])
-            note += (f"\nNhanh nhất: số {rank}, {shorten(clean_label(c.shown_title), 40)} — trung bình "
-                     f"khoảng {_num(pace)} lượt xem mỗi ngày. Chưa video nào được bot đo trước lần này, "
-                     "nên mọi ô còn là nét đứt.")
+        rank, c, _, _, pace, times = max(lines, key=lambda line: line[4])
+        note += (f"\nLượt này: số {rank}, {shorten(clean_label(c.shown_title), 40)} đang tăng nhanh nhất — "
+                 f"khoảng {_num(pace)} lượt xem mỗi ngày gần đây ({_decimal(round(times, 1))} lần trung bình "
+                 f"từ lúc đăng). {len(lines)}/{len(shown)} video đã được bot đo từ trước")
+        note += (f"; số {', '.join(map(str, new))} mới gặp lần đầu nên chưa có đường." if new else ".")
         return fig, note
 
     def _scatter(self, run_id, now, scope, candidates):

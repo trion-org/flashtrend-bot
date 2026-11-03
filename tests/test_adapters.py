@@ -479,7 +479,7 @@ class AnalysisChartsRenderTest(unittest.TestCase):
         return hot, AnalysisCharts().render(result.run_id, NOW, store.candidates, result.ideas, [], growth,
                                             hot if listed else None, "Video hot toàn Bilibili · video từ 1 giờ")
 
-    def test_the_growth_chart_draws_the_hot_list_one_panel_each(self):
+    def test_the_growth_chart_draws_the_hot_list_one_line_each_on_one_scale(self):
         hot, images = self.run_and_render()
         self.assertTrue(hot)
         slugs = [(img.position, img.slug) for img in images]
@@ -488,16 +488,31 @@ class AnalysisChartsRenderTest(unittest.TestCase):
         self.assertTrue(all(img.png.startswith(b"\x89PNG") for img in images))
         growth = next(img for img in images if img.slug == "growth")
         self.assertTrue(growth.caption.startswith("Tăng trưởng lượt xem của video hot\n"))
-        self.assertIn("Bilibili không công bố lịch sử lượt xem", growth.caption)  # why some lines are dashed
+        self.assertIn("Bilibili không công bố lịch sử lượt xem", growth.caption)  # why a line starts late
+        self.assertIn("chung một thang", growth.caption)
+        self.assertIn("số ở cuối đường là thứ tự", growth.caption)  # ten lines, told apart by their number
         self.assertIn(f"{len(hot)}/{len(hot)} video đã được bot đo", growth.caption)
         self.assertIn("đang tăng nhanh nhất", growth.caption)  # the fastest one, in plain words
         self.assertIn("lần trung bình từ lúc đăng", growth.caption)
+        self.assertNotIn("mới gặp lần đầu nên", growth.caption)
 
-    def test_without_an_earlier_snapshot_the_growth_chart_says_every_line_is_a_straight_join(self):
+    def test_a_video_met_for_the_first_time_has_no_line_and_the_caption_names_it(self):
+        from domain.models import PreviousSnapshot
+        from infrastructure.analysis_charts import AnalysisCharts
+
+        hot, _ = self.run_and_render()
+        first = hot[0]
+        growth = {c.video.id: [PreviousSnapshot(c.video.views - 900 * h, NOW - timedelta(hours=h)) for h in (3, 2)]
+                  for c in hot[1:]}
+        image = next(img for img in AnalysisCharts().render("r", NOW, hot, [], [], growth, hot)
+                     if img.slug == "growth")
+        self.assertIn(f"{len(hot) - 1}/{len(hot)} video đã được bot đo", image.caption)
+        self.assertIn("số 1 mới gặp lần đầu nên chưa có đường", image.caption)
+        self.assertTrue(first.video.views > 0)
+
+    def test_without_an_earlier_snapshot_the_growth_chart_is_left_out(self):
         _, images = self.run_and_render(prev_hours=())
-        growth = next(img for img in images if img.slug == "growth")
-        self.assertIn("Chưa video nào được bot đo trước lần này", growth.caption)
-        self.assertIn("trung bình khoảng", growth.caption)
+        self.assertNotIn("growth", [img.slug for img in images])  # nothing measured: no line to draw
         _, images = self.run_and_render(listed=False)
         self.assertNotIn("growth", [img.slug for img in images])  # no hot list, no panels
 
