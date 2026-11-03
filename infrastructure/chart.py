@@ -18,14 +18,14 @@ from application.ports import ChartImage
 from domain.clock import to_vn
 from domain.models import Idea
 
-WIDTH_PX, HEIGHT_PX, DPI = 1200, 675, 100
+WIDTH_PX, HEIGHT_PX, DPI = 1080, 1080, 100  # a square frame, large enough to read in a phone chat
 
-# Power-BI-style dashboard theme: deep navy, slightly lighter panels, and teal → blue → violet accents.
-BG, PANEL, TRACK, GRID = "#0a1022", "#131b33", "#212c4a", "#26324f"
-TEXT, MUTED = "#eaf0ff", "#8d9cc2"
-TEAL, ACCENT, VIOLET, MAGENTA, GOLD = "#2dd4a8", "#4c8dff", "#a77bf3", "#d96cf0", "#f5b841"
-GRADIENT = (TEAL, ACCENT, VIOLET)  # the fill of bars, left to right / top to bottom
-PLATFORM_COLOR = {"youtube": "#ff6b81", "bilibili": "#35c9ee"}
+# Archify "product" style, dark mode: near-black paper, lifted panels, an indigo→violet accent, status hues.
+BG, PANEL, TRACK, GRID = "#0c0d10", "#161824", "#1f2230", "#262a31"
+TEXT, MUTED = "#f2f3f8", "#8e93a8"
+TEAL, ACCENT, VIOLET, MAGENTA, GOLD = "#5cc98d", "#8d80ff", "#a994f5", "#f2806f", "#e9b04f"
+GRADIENT = (ACCENT, VIOLET)  # indigo → violet, the product style's signature; the fill of bars
+PLATFORM_COLOR = {"youtube": "#f2806f", "bilibili": "#7aa2ff"}
 PLATFORM_NAME = {"youtube": "YouTube", "bilibili": "Bilibili"}
 NICHE_SCOPE = "Hoạt hình 3D Trung Quốc · Bilibili + YouTube"  # what the hourly digest looks at
 
@@ -205,49 +205,48 @@ class MatplotlibChart:
         ax.set_ylim(HEIGHT_PX, 0)
         ax.axis("off")
         when = ideas[0].candidate.video.captured_at
-        ax.text(48, 40, "FlashTrend", color=ACCENT, fontsize=11, fontweight="bold", va="center")
+        ax.text(48, 52, "FlashTrend", color=ACCENT, fontsize=13, fontweight="bold", va="center")
         heading = "Video nổi bật" if scope else "Ý tưởng nổi bật hôm nay"
         sub = f"{shorten(clean_label(scope), 80)} · xếp theo điểm viral" if scope else (
             "Hoạt hình 3D Trung Quốc ưu tiên · xếp theo điểm viral")
-        ax.text(48, 78, heading, color=TEXT, fontsize=24, fontweight="bold", va="center")
-        ax.text(48, 112, sub, color=MUTED, fontsize=11.5, va="center")
-        ax.text(WIDTH_PX - 48, 40, f"{stamp(when)} · giờ Việt Nam", color=MUTED, fontsize=10, ha="right",
+        ax.text(48, 100, heading, color=TEXT, fontsize=30, fontweight="bold", va="center")
+        ax.text(48, 144, sub, color=MUTED, fontsize=14, va="center")
+        ax.text(WIDTH_PX - 48, 52, f"{stamp(when)} · giờ Việt Nam", color=MUTED, fontsize=12, ha="right",
                 va="center")
 
         shown = ideas[:8]
-        top, bottom = 140, HEIGHT_PX - 46
-        row_h = min(92.0, (bottom - top) / len(shown))
+        top, bottom = 196, HEIGHT_PX - 84
+        row_h = min(200.0, (bottom - top) / len(shown))
+        start_y = top + max(0.0, (bottom - top - row_h * len(shown)) / 2)  # centre the list in the tall frame
         best = max(i.candidate.viral_score for i in shown) or 1.0
-        bar_x, bar_w = 112, 700
+        bar_x, bar_w = 124, WIDTH_PX - 124 - 168
         for n, idea in enumerate(shown):
             c, v = idea.candidate, idea.candidate.video
-            y = top + n * row_h
+            y = start_y + n * row_h
             color = PLATFORM_COLOR.get(v.platform, ACCENT)
-            ax.add_patch(FancyBboxPatch((32, y + 4), WIDTH_PX - 64, row_h - 8,
-                                        boxstyle="round,pad=0,rounding_size=12", fc=PANEL, ec="none"))
-            ax.add_patch(Circle((70, y + row_h / 2), 20, fc=color, ec="none"))
-            ax.text(70, y + row_h / 2 + 1, str(n + 1), color=BG, fontsize=15, fontweight="bold", ha="center",
+            ax.add_patch(FancyBboxPatch((32, y + 6), WIDTH_PX - 64, row_h - 12,
+                                        boxstyle="round,pad=0,rounding_size=16", fc=PANEL, ec="none"))
+            ax.add_patch(Circle((78, y + row_h / 2), 26, fc=color, ec="none"))
+            ax.text(78, y + row_h / 2 + 1, str(n + 1), color=BG, fontsize=18, fontweight="bold", ha="center",
                     va="center")
-            title = shorten(clean_label(c.shown_title) or v.native_id, 56)
-            ax.text(bar_x, y + row_h * 0.30, title, color=TEXT, fontsize=14, fontweight="bold", va="center")
+            title = shorten(clean_label(c.shown_title) or v.native_id, 52)
+            ax.text(bar_x, y + row_h * 0.30, title, color=TEXT, fontsize=18, fontweight="bold", va="center")
             views, age = compact(v.views), age_text(v.age_hours)
             meta = clean_label(f"{idea.channel_title} · {views} lượt xem · {age} · z {c.z_score:+.1f}")
-            ax.text(bar_x, y + row_h * 0.56, shorten(meta, 92), color=MUTED, fontsize=10, va="center")
-            by = y + row_h * 0.78
-            ax.add_patch(FancyBboxPatch((bar_x, by - 4), bar_w, 8,
-                                        boxstyle="round,pad=0,rounding_size=4", fc=TRACK, ec="none"))
-            fill = max(10.0, bar_w * c.viral_score / best)
-            ax.add_patch(FancyBboxPatch((bar_x, by - 4), fill, 8,
-                                        boxstyle="round,pad=0,rounding_size=4", fc="none", ec="none"))
-            gradient_bar(ax, bar_x, by - 4, fill, 8, bar_w)
-            ax.text(bar_x + bar_w + 14, by, f"{c.viral_score:.1f}", color=TEXT, fontsize=12,
+            ax.text(bar_x, y + row_h * 0.54, shorten(meta, 80), color=MUTED, fontsize=13, va="center")
+            by = y + row_h * 0.76
+            ax.add_patch(FancyBboxPatch((bar_x, by - 5), bar_w, 10,
+                                        boxstyle="round,pad=0,rounding_size=5", fc=TRACK, ec="none"))
+            fill = max(12.0, bar_w * c.viral_score / best)
+            gradient_bar(ax, bar_x, by - 5, fill, 10, bar_w)
+            ax.text(bar_x + bar_w + 18, by, f"{c.viral_score:.1f}", color=TEXT, fontsize=15,
                     fontweight="bold", va="center")
-            ax.text(bar_x + bar_w + 14, by - 15, "viral", color=MUTED, fontsize=7.5, va="center")
-            pill(ax, WIDTH_PX - 112, y + row_h * 0.34,
-                 PLATFORM_NAME.get(v.platform, v.platform).upper(), color)
+            ax.text(bar_x + bar_w + 18, by - 19, "viral", color=MUTED, fontsize=9.5, va="center")
+            pill(ax, WIDTH_PX - 116, y + row_h * 0.33,
+                 PLATFORM_NAME.get(v.platform, v.platform).upper(), color, width=104)
             if idea.niche:
-                pill(ax, WIDTH_PX - 112, y + row_h * 0.68, "NGÁCH 3D", GOLD)
-        ax.text(48, HEIGHT_PX - 22, run_id, color=MUTED, fontsize=8.5, va="center")
-        ax.text(WIDTH_PX - 48, HEIGHT_PX - 22, "Điểm viral = view × engagement × hiệu suất kênh × độ mới",
-                color=MUTED, fontsize=8.5, ha="right", va="center")
+                pill(ax, WIDTH_PX - 116, y + row_h * 0.63, "NGÁCH 3D", GOLD, width=104)
+        ax.text(48, HEIGHT_PX - 34, run_id, color=MUTED, fontsize=10, va="center")
+        ax.text(WIDTH_PX - 48, HEIGHT_PX - 34, "Điểm viral = view × engagement × hiệu suất kênh × độ mới",
+                color=MUTED, fontsize=10, ha="right", va="center")
         return ChartImage(png=to_png(fig), width=WIDTH_PX, height=HEIGHT_PX)

@@ -457,7 +457,7 @@ class ChartTest(unittest.TestCase):
         image = MatplotlibChart().render(result.run_id, result.ideas)
         self.assertTrue(image.png.startswith(b"\x89PNG"))
         self.assertLess(len(image.png), 2_000_000)
-        self.assertEqual((image.width, image.height), (1200, 675))
+        self.assertEqual((image.width, image.height), (1080, 1080))
         self.assertIsNone(MatplotlibChart().render("r", []))
 
 

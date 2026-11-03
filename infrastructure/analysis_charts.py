@@ -46,7 +46,7 @@ MIN_POINTS = 5  # fewer candidates than this make a distribution chart meaningle
 #: the growth chart: one small panel per hot-list video (its 10 rows), in rows of 5, one hue for all — each
 #: panel is a single series, so a categorical palette would only add a legend to decode
 GROWTH_VIDEOS, GROWTH_COLUMNS = 10, 5
-LINE_COLOR = "#3987e5"
+LINE_COLOR = "#7aa2ff"  # Archify dark accent-blue, for the growth lines
 MARKERS_UP_TO = 12  # measured points drawn as dots up to this many; an hourly run's three days stay a line
 
 DURATION_BUCKETS = (  # (label, upper bound in seconds)
@@ -208,8 +208,9 @@ class AnalysisCharts:
             ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: compact(x)))
             ax.tick_params(labelsize=8)
             title = shorten(clean_label(c.shown_title) or c.video.native_id, 24)
-            ax.set_title(f"{rank}. {title}", loc="left", color=TEXT, fontsize=9.5, fontweight="bold", pad=17)
-            ax.text(0, 1.035, info, transform=ax.transAxes, color=MUTED, fontsize=8.5, va="bottom")
+            ax.set_title(f"{rank}. {title}", loc="left", color=TEXT, fontsize=9.5, fontweight="bold", pad=24)
+            ax.annotate(info, (0, 1), xytext=(0, 5), textcoords="offset points", xycoords="axes fraction",
+                        color=MUTED, fontsize=8.5, va="bottom")  # fixed gap, whatever the panel's height
         measured = [p for p in paces if p[1]]
         note = " ".join((
             "Mỗi ô là một video trong danh sách hot, đúng thứ tự trong tin nhắn; mỗi ô có thang riêng.",
@@ -401,7 +402,7 @@ class AnalysisCharts:
         rows.reverse()
         names = [self._tag_name(tag) for _, tag, _ in rows]
         values = [m for m, _, _ in rows]
-        colors = gradient_colors(len(rows))[::-1]  # the top bar is teal, the bottom one violet
+        colors = gradient_colors(len(rows))[::-1]  # the top bar indigo, fading to violet down the list
         bars = ax.barh(names, values, color=colors, height=0.62)
         for bar, (m, _, v) in zip(bars, rows, strict=True):
             ax.text(bar.get_width() + max(values) * 0.01, bar.get_y() + bar.get_height() / 2,
